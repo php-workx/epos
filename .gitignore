@@ -1,0 +1,12 @@
+# AgentOps session artifacts (auto-added)
+.agents/
+.serena
+.verk
+
+# Ticket lock files (flock sidecars — top-level and claim subdirectory)
+.tickets
+
+# Go build artifacts
+/bin/
+*.test
+

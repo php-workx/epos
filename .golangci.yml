@@ -1,0 +1,112 @@
+version: "2"
+
+# golangci-lint v2 configuration for epos
+# Keep version in sync with tools.mod and CI
+
+run:
+  timeout: 3m
+
+linters:
+  enable:
+    # Type safety & correctness
+    - staticcheck
+    - govet
+
+    # Bug detection
+    - errcheck
+    - nilerr
+    - nilnil
+
+    # Style & consistency
+    - revive
+    - goconst
+    - unconvert
+    - unparam
+    - usestdlibvars
+
+    # Complexity
+    - gocognit
+    - cyclop
+
+    # Security
+    - gosec
+
+    # Code hygiene
+    - gocritic
+    - prealloc
+    - mirror
+    - nolintlint
+
+  settings:
+    gocognit:
+      min-complexity: 30
+
+    cyclop:
+      max-complexity: 20
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: var-naming
+        - name: range
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: empty-block
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: unnecessary-stmt
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - whyNoLint
+        - unnamedResult
+        - appendCombine
+        - emptyStringTest
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    gosec:
+      excludes:
+        - G104  # unhandled errors — errcheck covers this
+        - G304  # file inclusion via variable — epos constructs paths from ticket dir
+        - G306  # WriteFile 0644 — standard for non-secret data files
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - gocognit
+          - cyclop
+          - goconst
+          - unparam
+          - gocritic
+          - revive
+          - gosec
+
+formatters:
+  enable:
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true
