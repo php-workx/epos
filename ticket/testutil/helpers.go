@@ -27,15 +27,15 @@ func NewTestStore(t *testing.T) *store.FileStore {
 	return s
 }
 
-// NewTestStoreInDir creates a FileStore rooted at the given directory.
+// NewStoreInDir creates a FileStore rooted at the given directory.
 // It is the caller's responsibility to clean up the directory.
 // This is useful when a test needs to control the directory path
 // (e.g. for CLI integration tests that pass --dir).
-func NewTestStoreInDir(t *testing.T, dir string) *store.FileStore {
+func NewStoreInDir(t *testing.T, dir string) *store.FileStore {
 	t.Helper()
 	s, err := store.NewFileStore(dir)
 	if err != nil {
-		t.Fatalf("NewTestStoreInDir: %v", err)
+		t.Fatalf("NewStoreInDir: %v", err)
 	}
 	return s
 }

@@ -325,7 +325,7 @@ func TestCustomErrorTypes(t *testing.T) {
 		dir := t.TempDir()
 
 		// Create two tickets with IDs that share a common prefix.
-		s := testutil.NewTestStoreInDir(t, dir)
+		s := testutil.NewStoreInDir(t, dir)
 		tk1 := testutil.NewTestTicket("First ambiguous ticket")
 		tk2 := testutil.NewTestTicket("Second ambiguous ticket")
 		testutil.MustCreateTicket(t, s, tk1)
@@ -344,7 +344,7 @@ func TestCustomErrorTypes(t *testing.T) {
 func TestCLIReadyAndBlocked(t *testing.T) {
 	dir := t.TempDir()
 
-	s := testutil.NewTestStoreInDir(t, dir)
+	s := testutil.NewStoreInDir(t, dir)
 
 	// Create a parent ticket.
 	parent := testutil.NewTestTicket("Parent ticket")
