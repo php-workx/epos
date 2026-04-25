@@ -18,6 +18,7 @@ var closedStatuses = map[ticket.Status]bool{
 // readyStatuses are the statuses under which a ticket is eligible to be picked up
 // but has not yet been claimed or started.
 var readyStatuses = map[ticket.Status]bool{
+	ticket.StatusOpen:          true,
 	ticket.StatusPending:       true,
 	ticket.StatusRepairPending: true,
 }

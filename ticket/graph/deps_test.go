@@ -64,7 +64,8 @@ func TestReadyAllDepsClosed(t *testing.T) {
 	}
 }
 
-// TestReadyExcludesOpenDep: a ticket with one open dep is NOT ready.
+// TestReadyExcludesOpenDep: a ticket whose dep has status open (not closed) is NOT ready.
+// The dep itself (open, no deps) IS ready; only the dependent child is excluded.
 func TestReadyExcludesOpenDep(t *testing.T) {
 	t.Parallel()
 	tickets := []ticket.Ticket{
@@ -72,8 +73,10 @@ func TestReadyExcludesOpenDep(t *testing.T) {
 		mk("dep", ticket.StatusOpen, 0, nil, ""),
 	}
 	got := graph.ReadyFilter(tickets)
-	if len(got) != 0 {
-		t.Fatalf("ReadyFilter: expected 0 tickets, got %d (%v)", len(got), ids(got))
+	for _, r := range got {
+		if r.ID == "child" {
+			t.Errorf("ReadyFilter: child with open dep should not appear in ready list")
+		}
 	}
 }
 
@@ -89,11 +92,11 @@ func TestReadyExcludesAbsentDep(t *testing.T) {
 	}
 }
 
-// TestReadyExcludesNonPending: tickets in other statuses are not returned.
+// TestReadyExcludesNonPending: tickets in active/terminal statuses are not returned.
+// open, pending, and repair_pending are ready; everything else is not.
 func TestReadyExcludesNonPending(t *testing.T) {
 	t.Parallel()
 	nonReady := []ticket.Status{
-		ticket.StatusOpen,
 		ticket.StatusInProgress,
 		ticket.StatusClosed,
 		ticket.StatusDone,
