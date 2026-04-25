@@ -8,5 +8,6 @@
 
 # Go build artifacts
 /bin/
+/epos
 *.test
 
