@@ -41,8 +41,10 @@ type newTicketSpec struct {
 	Intent             string   `json:"intent"`
 }
 
+const defaultTicketType = "task"
+
 var validTicketTypeSet = map[string]bool{
-	"epic": true, "task": true, "issue": true, "feature": true,
+	"epic": true, defaultTicketType: true, "issue": true, "feature": true,
 	"bug": true, "chore": true, "spike": true, "doc": true,
 }
 
@@ -127,7 +129,7 @@ var newCmd = &cobra.Command{
 		if cmd.Flags().Changed("type") {
 			spec.Type = newType
 		} else if spec.Type == "" {
-			spec.Type = "task"
+			spec.Type = defaultTicketType
 		}
 		if cmd.Flags().Changed("priority") {
 			spec.Priority = newPriority
@@ -194,7 +196,7 @@ var newCmd = &cobra.Command{
 }
 
 func init() {
-	newCmd.Flags().StringVarP(&newType, "type", "t", "task", "ticket type (epic, task, issue, feature, bug, chore, spike, doc)")
+	newCmd.Flags().StringVarP(&newType, "type", "t", defaultTicketType, "ticket type (epic, task, issue, feature, bug, chore, spike, doc)")
 	newCmd.Flags().IntVarP(&newPriority, "priority", "p", 0, "ticket priority (higher = more important)")
 	newCmd.Flags().StringVar(&newParent, "parent", "", "parent ticket ID")
 	newCmd.Flags().StringSliceVar(&newDeps, "deps", nil, "comma-separated list of dependency ticket IDs")
