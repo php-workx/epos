@@ -97,14 +97,16 @@ type LearningRef struct {
 // TitleDerived indicates when the title was extracted from a Markdown body heading.
 type Ticket struct {
 	// Core graph
-	ID       string   `yaml:"id"       json:"id"`
-	Title    string   `yaml:"title"    json:"title"`
-	Type     string   `yaml:"type"     json:"type"`
-	Status   Status   `yaml:"status"   json:"status"`
-	Parent   string   `yaml:"parent"   json:"parent,omitempty"`
-	Deps     []string `yaml:"deps"     json:"deps,omitempty"`
-	Priority int      `yaml:"priority" json:"priority"`
-	Tags     []string `yaml:"tags"     json:"tags,omitempty"`
+	ID          string   `yaml:"id"          json:"id"`
+	Title       string   `yaml:"title"       json:"title"`
+	Type        string   `yaml:"type"        json:"type"`
+	Status      Status   `yaml:"status"      json:"status"`
+	Parent      string   `yaml:"parent"      json:"parent,omitempty"`
+	Deps        []string `yaml:"deps"        json:"deps,omitempty"`
+	Priority    int      `yaml:"priority"    json:"priority"`
+	Tags        []string `yaml:"tags"        json:"tags,omitempty"`
+	Description string   `yaml:"description" json:"description,omitempty"`
+	Notes       []string `yaml:"notes"       json:"notes,omitempty"`
 
 	// Planning facet (authored by fabrikk)
 	RequirementIDs       []string             `yaml:"requirement_ids"        json:"requirement_ids,omitempty"`
@@ -221,4 +223,52 @@ func NewTicket(opts ...TicketOption) *Ticket {
 		opt(t)
 	}
 	return t
+}
+
+// WithDescription sets the Ticket description (narrative preamble) and marks the field as present.
+func WithDescription(desc string) TicketOption {
+	return func(t *Ticket) {
+		t.Description = desc
+		t.Present["description"] = true
+	}
+}
+
+// WithAssignee sets the Ticket assignee and marks the field as present in frontmatter.
+func WithAssignee(name string) TicketOption {
+	return func(t *Ticket) {
+		t.Assignee = name
+		t.Present["assignee"] = true
+	}
+}
+
+// WithTags sets the Ticket tags and marks the field as present in frontmatter.
+func WithTags(tags ...string) TicketOption {
+	return func(t *Ticket) {
+		t.Tags = tags
+		t.Present["tags"] = true
+	}
+}
+
+// WithAcceptanceCriteria sets the Ticket acceptance criteria and marks the field as present.
+func WithAcceptanceCriteria(items ...string) TicketOption {
+	return func(t *Ticket) {
+		t.AcceptanceCriteria = items
+		t.Present["acceptance_criteria"] = true
+	}
+}
+
+// WithNotes sets the Ticket notes and marks the field as present.
+func WithNotes(notes ...string) TicketOption {
+	return func(t *Ticket) {
+		t.Notes = notes
+		t.Present["notes"] = true
+	}
+}
+
+// WithIntent sets the Ticket intent and marks the field as present in frontmatter.
+func WithIntent(text string) TicketOption {
+	return func(t *Ticket) {
+		t.Intent = text
+		t.Present["intent"] = true
+	}
 }

@@ -44,8 +44,9 @@ func NewFileStore(dir string) (*FileStore, error) {
 }
 
 // ticketPath returns the file path for the given ticket ID.
+// filepath.Base strips any directory components from id, preventing path traversal.
 func (s *FileStore) ticketPath(id string) string {
-	return filepath.Join(s.Dir, TicketsDir, id+TicketExt)
+	return filepath.Join(s.Dir, TicketsDir, filepath.Base(id)+TicketExt)
 }
 
 // Create writes a new ticket file. It returns *ticket.IDCollisionError if the
@@ -98,20 +99,24 @@ func (s *FileStore) Read(id string) (*ticket.Ticket, error) {
 	return t, nil
 }
 
-// Update writes the ticket file, overwriting any existing content.
+// Update writes the ticket file, preserving any existing Markdown body content.
 func (s *FileStore) Update(t *ticket.Ticket) error {
 	if t.ID == "" {
 		return &ticket.ValidationError{Field: "id", Message: "required"}
 	}
 	path := s.ticketPath(t.ID)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return &ticket.TicketNotFoundError{ID: t.ID}
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &ticket.TicketNotFoundError{ID: t.ID}
+		}
+		return fmt.Errorf("read ticket %q: %w", t.ID, err)
 	}
 	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	t.Present["updated_at"] = true
-	data, err := markdown.MarshalTicket(t)
+	data, err := markdown.UpdateFrontmatter(existing, t)
 	if err != nil {
-		return fmt.Errorf("marshal ticket %q: %w", t.ID, err)
+		return fmt.Errorf("update ticket %q: %w", t.ID, err)
 	}
 	return os.WriteFile(path, data, 0o644)
 }

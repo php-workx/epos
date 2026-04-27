@@ -463,3 +463,451 @@ func TestTestutilNewTestTicketWithStatus(t *testing.T) {
 		t.Errorf("NewTestTicketWithStatus title = %q, want %q", tk.Title, "closed ticket")
 	}
 }
+
+// ─── epos new: rich content flags ─────────────────────────────────────────────
+
+func TestCLINewWithBody(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Body ticket",
+		"--body", "This is the narrative.",
+		"--type", "task",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new --body: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("show --json: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "This is the narrative." {
+		t.Errorf("Description: got %q, want %q", tk.Description, "This is the narrative.")
+	}
+}
+
+func TestCLINewWithAcceptanceCriteria(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "AC ticket",
+		"--ac", "first criterion",
+		"--ac", "second criterion",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new --ac: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("show --json: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if len(tk.AcceptanceCriteria) != 2 {
+		t.Fatalf("AcceptanceCriteria: got %d items, want 2", len(tk.AcceptanceCriteria))
+	}
+	if tk.AcceptanceCriteria[0] != "first criterion" {
+		t.Errorf("AcceptanceCriteria[0]: got %q, want %q", tk.AcceptanceCriteria[0], "first criterion")
+	}
+}
+
+func TestCLINewWithNotes(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Notes ticket",
+		"--note", "initial note",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new --note: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("show --json: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if len(tk.Notes) != 1 || tk.Notes[0] != "initial note" {
+		t.Errorf("Notes: got %v, want [initial note]", tk.Notes)
+	}
+}
+
+func TestCLINewWithAllRichFlags(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Rich ticket",
+		"--type", "feature",
+		"--priority", "5",
+		"--body", "narrative text",
+		"--ac", "criterion one",
+		"--ac", "criterion two",
+		"--note", "note alpha",
+		"--assignee", "dev-1",
+		"--tags", "backend,api",
+		"--intent", "improve throughput",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new all flags: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("show --json: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "narrative text" {
+		t.Errorf("Description: got %q", tk.Description)
+	}
+	if len(tk.AcceptanceCriteria) != 2 {
+		t.Errorf("AcceptanceCriteria count: got %d", len(tk.AcceptanceCriteria))
+	}
+	if tk.Assignee != "dev-1" {
+		t.Errorf("Assignee: got %q", tk.Assignee)
+	}
+	if tk.Intent != "improve throughput" {
+		t.Errorf("Intent: got %q", tk.Intent)
+	}
+	if len(tk.Tags) != 2 {
+		t.Errorf("Tags count: got %d", len(tk.Tags))
+	}
+}
+
+func TestCLINewBodyRenderedInFile(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "File body test",
+		"--body", "my description",
+		"--ac", "check one",
+		"--note", "note text",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	data, err := os.ReadFile(filepath.Join(dir, ".tickets", id+".md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "my description") {
+		t.Errorf("ticket file missing description body paragraph:\n%s", body)
+	}
+	if !strings.Contains(body, "## Acceptance criteria") {
+		t.Errorf("ticket file missing ## Acceptance criteria section:\n%s", body)
+	}
+	if !strings.Contains(body, "## Notes") {
+		t.Errorf("ticket file missing ## Notes section:\n%s", body)
+	}
+}
+
+// ─── epos new: JSON stdin ─────────────────────────────────────────────────────
+
+func eposStdin(t *testing.T, dir, input string, args ...string) (stdout string, exitCode int) {
+	t.Helper()
+	fullArgs := append([]string{"--dir", dir}, args...)
+	cmd := exec.Command(binaryPath, fullArgs...)
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.CombinedOutput()
+	stdout = string(out)
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+	}
+	return stdout, exitCode
+}
+
+func TestCLINewStdin(t *testing.T) {
+	dir := t.TempDir()
+	input := `{
+		"type": "task",
+		"body": "from stdin",
+		"acceptance_criteria": ["ac from stdin"]
+	}`
+	stdout, exitCode := eposStdin(t, dir, input, "new", "Stdin ticket", "--stdin")
+	if exitCode != 0 {
+		t.Fatalf("new --stdin: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout2, _, exitCode2 := epos(t, dir, "show", id, "--json")
+	if exitCode2 != 0 {
+		t.Fatalf("show --json: exit %d: %s", exitCode2, stdout2)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout2), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "from stdin" {
+		t.Errorf("Description from stdin: got %q", tk.Description)
+	}
+	if len(tk.AcceptanceCriteria) != 1 || tk.AcceptanceCriteria[0] != "ac from stdin" {
+		t.Errorf("AcceptanceCriteria from stdin: got %v", tk.AcceptanceCriteria)
+	}
+}
+
+func TestCLINewStdinFlagsOverride(t *testing.T) {
+	dir := t.TempDir()
+	input := `{"type": "epic", "body": "from stdin body"}`
+	// --type flag should override JSON type; --body flag should override JSON body
+	stdout, exitCode := eposStdin(t, dir, input,
+		"new", "Override test", "--stdin",
+		"--type", "task",
+		"--body", "flag body wins",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new --stdin with overrides: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout2, _, _ := epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout2), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Type != "task" {
+		t.Errorf("Type: flag should override stdin, got %q", tk.Type)
+	}
+	if tk.Description != "flag body wins" {
+		t.Errorf("Description: flag should override stdin, got %q", tk.Description)
+	}
+}
+
+func TestCLINewStdinInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	stdout, exitCode := eposStdin(t, dir, "not valid json", "new", "Bad stdin", "--stdin")
+	if exitCode == 0 {
+		t.Fatalf("new --stdin invalid JSON: expected non-zero exit, got 0; output: %s", stdout)
+	}
+}
+
+// ─── epos new: validation ─────────────────────────────────────────────────────
+
+func TestCLINewInvalidType(t *testing.T) {
+	dir := t.TempDir()
+	_, _, exitCode := epos(t, dir, "new", "Bad type", "--type", "invalid-type")
+	if exitCode != 2 {
+		t.Errorf("new --type invalid: expected exit 2 (ValidationError), got %d", exitCode)
+	}
+}
+
+func TestCLINewEmptyACItem(t *testing.T) {
+	dir := t.TempDir()
+	_, _, exitCode := epos(t, dir, "new", "Empty AC", "--ac", "")
+	if exitCode != 2 {
+		t.Errorf("new --ac empty: expected exit 2 (ValidationError), got %d", exitCode)
+	}
+}
+
+func TestCLINewDuplicateTags(t *testing.T) {
+	dir := t.TempDir()
+	_, _, exitCode := epos(t, dir, "new", "Dup tags", "--tags", "foo,foo")
+	if exitCode != 2 {
+		t.Errorf("new --tags duplicate: expected exit 2 (ValidationError), got %d", exitCode)
+	}
+}
+
+func TestCLINewStdinInvalidType(t *testing.T) {
+	dir := t.TempDir()
+	input := `{"type": "not-a-type"}`
+	stdout, exitCode := eposStdin(t, dir, input, "new", "Stdin bad type", "--stdin")
+	if exitCode != 2 {
+		t.Errorf("new --stdin invalid type: expected exit 2, got %d; output: %s", exitCode, stdout)
+	}
+}
+
+func TestCLINewStdinEmptyAC(t *testing.T) {
+	dir := t.TempDir()
+	input := `{"acceptance_criteria": ["valid", ""]}`
+	stdout, exitCode := eposStdin(t, dir, input, "new", "Stdin empty AC", "--stdin")
+	if exitCode != 2 {
+		t.Errorf("new --stdin empty AC item: expected exit 2, got %d; output: %s", exitCode, stdout)
+	}
+}
+
+func TestCLINewBodyFile(t *testing.T) {
+	dir := t.TempDir()
+	bodyFile := filepath.Join(dir, "body.txt")
+	if err := os.WriteFile(bodyFile, []byte("from a file"), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+	stdout, _, exitCode := epos(t, dir, "new", "Body file ticket", "--body-file", bodyFile)
+	if exitCode != 0 {
+		t.Fatalf("new --body-file: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, _ = epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "from a file" {
+		t.Errorf("Description from --body-file: got %q", tk.Description)
+	}
+}
+
+// ─── epos edit ────────────────────────────────────────────────────────────────
+
+func TestCLIEdit(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit me", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	_, _, exitCode = epos(t, dir, "edit", id,
+		"--body", "updated description",
+		"--ac", "new criterion",
+	)
+	if exitCode != 0 {
+		t.Fatalf("edit: exit %d", exitCode)
+	}
+
+	stdout, _, exitCode = epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("show --json after edit: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "updated description" {
+		t.Errorf("Description after edit: got %q", tk.Description)
+	}
+	if len(tk.AcceptanceCriteria) != 1 || tk.AcceptanceCriteria[0] != "new criterion" {
+		t.Errorf("AcceptanceCriteria after edit: got %v", tk.AcceptanceCriteria)
+	}
+}
+
+func TestCLIEditPreservesBody(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Body preserved",
+		"--body", "original description",
+		"--ac", "original AC",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	// Edit only priority — body sections should be untouched.
+	_, _, exitCode = epos(t, dir, "edit", id, "--priority", "7")
+	if exitCode != 0 {
+		t.Fatalf("edit --priority: exit %d", exitCode)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".tickets", id+".md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "original description") {
+		t.Errorf("edit dropped description from body:\n%s", body)
+	}
+	if !strings.Contains(body, "## Acceptance criteria") {
+		t.Errorf("edit dropped ## Acceptance criteria from body:\n%s", body)
+	}
+}
+
+func TestCLIEditStdin(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit via stdin", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	input := `{"body": "stdin body", "acceptance_criteria": ["stdin ac"]}`
+	stdout2, exitCode2 := eposStdin(t, dir, input, "edit", id, "--stdin")
+	if exitCode2 != 0 {
+		t.Fatalf("edit --stdin: exit %d: %s", exitCode2, stdout2)
+	}
+
+	stdout3, _, _ := epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout3), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "stdin body" {
+		t.Errorf("edit --stdin Description: got %q", tk.Description)
+	}
+}
+
+func TestCLIEditNotFound(t *testing.T) {
+	dir := t.TempDir()
+	_, _, exitCode := epos(t, dir, "edit", "nonexistent-id", "--priority", "1")
+	if exitCode != 3 {
+		t.Errorf("edit nonexistent: expected exit 3 (TicketNotFoundError), got %d", exitCode)
+	}
+}
+
+func TestCLIEditInvalidPriority(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit validation")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d", exitCode)
+	}
+	id := strings.TrimSpace(stdout)
+
+	input := `{"priority": -1}`
+	stdout2, exitCode2 := eposStdin(t, dir, input, "edit", id, "--stdin")
+	if exitCode2 != 2 {
+		t.Errorf("edit --stdin negative priority: expected exit 2, got %d; output: %s", exitCode2, stdout2)
+	}
+}
+
+func TestCLIEditDuplicateTags(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Tag dup test")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d", exitCode)
+	}
+	id := strings.TrimSpace(stdout)
+
+	_, _, exitCode = epos(t, dir, "edit", id, "--tags", "foo,foo")
+	if exitCode != 2 {
+		t.Errorf("edit --tags duplicate: expected exit 2, got %d", exitCode)
+	}
+}
+
+// ─── close preserves body ─────────────────────────────────────────────────────
+
+func TestCLIClosePreservesBody(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Close preserve",
+		"--body", "must survive close",
+		"--ac", "check one",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	_, _, exitCode = epos(t, dir, "close", id)
+	if exitCode != 0 {
+		t.Fatalf("close: exit %d", exitCode)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".tickets", id+".md"))
+	if err != nil {
+		t.Fatalf("ReadFile after close: %v", err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "must survive close") {
+		t.Errorf("close dropped description from body:\n%s", body)
+	}
+	if !strings.Contains(body, "## Acceptance criteria") {
+		t.Errorf("close dropped ## Acceptance criteria from body:\n%s", body)
+	}
+}

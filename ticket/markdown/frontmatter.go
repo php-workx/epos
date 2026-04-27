@@ -73,6 +73,8 @@ func MarshalYAML(t *ticket.Ticket) (*yaml.Node, error) {
 	b.emit("deps", t.Deps)
 	b.emit("priority", t.Priority)
 	b.emit("tags", t.Tags)
+	b.emit("description", t.Description)
+	b.emit("notes", t.Notes)
 
 	// ── Planning facet ────────────────────────────────────────────────────────
 	b.emit("requirement_ids", t.RequirementIDs)
@@ -160,7 +162,7 @@ func MarshalTicket(t *ticket.Ticket) ([]byte, error) {
 		return nil, fmt.Errorf("MarshalTicket: marshal node: %w", err)
 	}
 
-	return renderFrontmatterBody(yamlBytes, ""), nil
+	return renderFrontmatterBody(yamlBytes, RenderSections(t)), nil
 }
 
 // UnmarshalTicket parses Markdown bytes with YAML frontmatter into a Ticket.

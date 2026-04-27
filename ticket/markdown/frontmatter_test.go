@@ -524,6 +524,118 @@ func TestMarshalYAMLReturnsMappingNode(t *testing.T) {
 	}
 }
 
+// ─── MarshalTicket body rendering ─────────────────────────────────────────────
+
+func TestMarshalTicketRendersDescriptionInBody(t *testing.T) {
+	tk := &ticket.Ticket{
+		ID: "body-0001", Title: "Body test", Type: "task",
+		Description: "This is the narrative.",
+		Present:     map[string]bool{"id": true, "title": true, "type": true, "description": true},
+	}
+	b, err := markdown.MarshalTicket(tk)
+	if err != nil {
+		t.Fatalf("MarshalTicket: %v", err)
+	}
+	s := string(b)
+	// Description must appear in YAML frontmatter.
+	if !strings.Contains(s, "description: This is the narrative.") {
+		t.Errorf("description not found in YAML frontmatter:\n%s", s)
+	}
+	// Description must also appear as body paragraph after the closing ---.
+	parts := strings.SplitN(s, "---\n", 3)
+	if len(parts) < 3 {
+		t.Fatalf("expected 3 parts after split on ---\\n, got %d", len(parts))
+	}
+	body := parts[2]
+	if !strings.Contains(body, "This is the narrative.") {
+		t.Errorf("description not rendered in markdown body:\n%s", body)
+	}
+}
+
+func TestMarshalTicketRendersAcceptanceCriteriaInBody(t *testing.T) {
+	tk := &ticket.Ticket{
+		ID: "ac-0001", Title: "AC test", Type: "task",
+		AcceptanceCriteria: []string{"first criterion", "second criterion"},
+		Present:            map[string]bool{"id": true, "title": true, "type": true, "acceptance_criteria": true},
+	}
+	b, err := markdown.MarshalTicket(tk)
+	if err != nil {
+		t.Fatalf("MarshalTicket: %v", err)
+	}
+	s := string(b)
+	parts := strings.SplitN(s, "---\n", 3)
+	if len(parts) < 3 {
+		t.Fatalf("expected 3 parts, got %d", len(parts))
+	}
+	body := parts[2]
+	if !strings.Contains(body, "## Acceptance criteria") {
+		t.Errorf("missing '## Acceptance criteria' in body:\n%s", body)
+	}
+	if !strings.Contains(body, "- first criterion") {
+		t.Errorf("missing first criterion in body:\n%s", body)
+	}
+}
+
+func TestMarshalTicketRendersNotesInBody(t *testing.T) {
+	tk := &ticket.Ticket{
+		ID: "notes-0001", Title: "Notes test", Type: "task",
+		Notes:   []string{"initial note"},
+		Present: map[string]bool{"id": true, "title": true, "type": true, "notes": true},
+	}
+	b, err := markdown.MarshalTicket(tk)
+	if err != nil {
+		t.Fatalf("MarshalTicket: %v", err)
+	}
+	s := string(b)
+	parts := strings.SplitN(s, "---\n", 3)
+	body := parts[2]
+	if !strings.Contains(body, "## Notes") {
+		t.Errorf("missing '## Notes' in body:\n%s", body)
+	}
+	if !strings.Contains(body, "- initial note") {
+		t.Errorf("missing note text in body:\n%s", body)
+	}
+}
+
+func TestMarshalTicketEmptyBodyWhenNoContent(t *testing.T) {
+	tk := simpleTicket() // no Description, Notes, AcceptanceCriteria
+	b, err := markdown.MarshalTicket(tk)
+	if err != nil {
+		t.Fatalf("MarshalTicket: %v", err)
+	}
+	s := string(b)
+	// After the closing ---, there should be no content.
+	parts := strings.SplitN(s, "---\n", 3)
+	if len(parts) == 3 && strings.TrimSpace(parts[2]) != "" {
+		t.Errorf("expected empty body for ticket with no content fields, got:\n%s", parts[2])
+	}
+}
+
+func TestDescriptionAndNotesEmittedInYAML(t *testing.T) {
+	tk := &ticket.Ticket{
+		ID: "yaml-0001", Title: "YAML fields test", Type: "task",
+		Description: "my description",
+		Notes:       []string{"note a", "note b"},
+		Present:     map[string]bool{"id": true, "title": true, "type": true, "description": true, "notes": true},
+	}
+	b, err := markdown.MarshalTicket(tk)
+	if err != nil {
+		t.Fatalf("MarshalTicket: %v", err)
+	}
+	// Extract only frontmatter.
+	parts := strings.SplitN(string(b), "---\n", 3)
+	if len(parts) < 3 {
+		t.Fatalf("expected 3 parts, got %d", len(parts))
+	}
+	fm := parts[1]
+	if !strings.Contains(fm, "description: my description") {
+		t.Errorf("description not in frontmatter:\n%s", fm)
+	}
+	if !strings.Contains(fm, "- note a") {
+		t.Errorf("notes not in frontmatter:\n%s", fm)
+	}
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 func min(a, b int) int {

@@ -3,7 +3,65 @@ package markdown
 import (
 	"strings"
 	"time"
+
+	"github.com/php-workx/epos/ticket"
 )
+
+// RenderSections generates a Markdown body from structured Ticket fields.
+// Only non-empty fields produce output. The YAML frontmatter is authoritative;
+// the body is a rendered view and is not re-parsed on unmarshal.
+//
+// Rendered sections (in order):
+//   - Description paragraph (no heading)
+//   - ## Acceptance criteria — bulleted list from AcceptanceCriteria
+//   - ## Validation — bash code block from ValidationCommands
+//   - ## Notes — bulleted list from Notes
+func RenderSections(t *ticket.Ticket) string {
+	var b strings.Builder
+
+	if t.Description != "" {
+		b.WriteString(t.Description)
+		b.WriteString("\n")
+	}
+
+	if len(t.AcceptanceCriteria) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## Acceptance criteria\n\n")
+		for _, item := range t.AcceptanceCriteria {
+			b.WriteString("- ")
+			b.WriteString(item)
+			b.WriteString("\n")
+		}
+	}
+
+	if len(t.ValidationCommands) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## Validation\n\n```bash\n")
+		for _, cmd := range t.ValidationCommands {
+			b.WriteString(cmd)
+			b.WriteString("\n")
+		}
+		b.WriteString("```\n")
+	}
+
+	if len(t.Notes) > 0 {
+		if b.Len() > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("## Notes\n\n")
+		for _, note := range t.Notes {
+			b.WriteString("- ")
+			b.WriteString(note)
+			b.WriteString("\n")
+		}
+	}
+
+	return b.String()
+}
 
 // ExtractHeadingTitle scans body for the first top-level Markdown heading (a line
 // beginning with exactly one '#' followed by a space) and returns its text.

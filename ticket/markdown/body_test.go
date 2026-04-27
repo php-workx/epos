@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/markdown"
 )
 
@@ -166,5 +167,102 @@ func TestAddNoteEmptyBody(t *testing.T) {
 	}
 	if !strings.Contains(result, "Note in empty body") {
 		t.Error("note text must appear")
+	}
+}
+
+// ─── RenderSections ───────────────────────────────────────────────────────────
+
+func TestRenderSectionsEmpty(t *testing.T) {
+	tk := &ticket.Ticket{}
+	result := markdown.RenderSections(tk)
+	if result != "" {
+		t.Errorf("RenderSections on empty ticket should return empty string, got %q", result)
+	}
+}
+
+func TestRenderSectionsDescriptionOnly(t *testing.T) {
+	tk := &ticket.Ticket{Description: "Just a description."}
+	result := markdown.RenderSections(tk)
+	if !strings.Contains(result, "Just a description.") {
+		t.Errorf("RenderSections should include Description, got %q", result)
+	}
+	if strings.Contains(result, "##") {
+		t.Errorf("RenderSections with only Description should produce no headings, got %q", result)
+	}
+}
+
+func TestRenderSectionsAcceptanceCriteria(t *testing.T) {
+	tk := &ticket.Ticket{
+		AcceptanceCriteria: []string{"criterion one", "criterion two"},
+	}
+	result := markdown.RenderSections(tk)
+	if !strings.Contains(result, "## Acceptance criteria") {
+		t.Errorf("RenderSections should include '## Acceptance criteria' heading, got %q", result)
+	}
+	if !strings.Contains(result, "- criterion one") {
+		t.Errorf("RenderSections should list criterion one, got %q", result)
+	}
+	if !strings.Contains(result, "- criterion two") {
+		t.Errorf("RenderSections should list criterion two, got %q", result)
+	}
+}
+
+func TestRenderSectionsValidationCommands(t *testing.T) {
+	tk := &ticket.Ticket{
+		ValidationCommands: []string{"go test ./...", "go vet ./..."},
+	}
+	result := markdown.RenderSections(tk)
+	if !strings.Contains(result, "## Validation") {
+		t.Errorf("RenderSections should include '## Validation' heading, got %q", result)
+	}
+	if !strings.Contains(result, "```bash") {
+		t.Errorf("RenderSections should wrap commands in a bash code block, got %q", result)
+	}
+	if !strings.Contains(result, "go test ./...") {
+		t.Errorf("RenderSections should include first command, got %q", result)
+	}
+}
+
+func TestRenderSectionsNotes(t *testing.T) {
+	tk := &ticket.Ticket{Notes: []string{"note alpha", "note beta"}}
+	result := markdown.RenderSections(tk)
+	if !strings.Contains(result, "## Notes") {
+		t.Errorf("RenderSections should include '## Notes' heading, got %q", result)
+	}
+	if !strings.Contains(result, "- note alpha") {
+		t.Errorf("RenderSections should list note alpha, got %q", result)
+	}
+}
+
+func TestRenderSectionsOrdering(t *testing.T) {
+	tk := &ticket.Ticket{
+		Description:        "preamble",
+		AcceptanceCriteria: []string{"ac item"},
+		ValidationCommands: []string{"go test ./..."},
+		Notes:              []string{"a note"},
+	}
+	result := markdown.RenderSections(tk)
+	preamblePos := strings.Index(result, "preamble")
+	acPos := strings.Index(result, "## Acceptance criteria")
+	validationPos := strings.Index(result, "## Validation")
+	notesPos := strings.Index(result, "## Notes")
+
+	if preamblePos >= acPos {
+		t.Error("Description paragraph should appear before ## Acceptance criteria")
+	}
+	if acPos >= validationPos {
+		t.Error("## Acceptance criteria should appear before ## Validation")
+	}
+	if validationPos >= notesPos {
+		t.Error("## Validation should appear before ## Notes")
+	}
+}
+
+func TestRenderSectionsNoSpuriousHeadings(t *testing.T) {
+	// Only Description set — no headings should appear.
+	tk := &ticket.Ticket{Description: "just text"}
+	result := markdown.RenderSections(tk)
+	if strings.Contains(result, "##") {
+		t.Errorf("no headings expected when only Description is set, got %q", result)
 	}
 }

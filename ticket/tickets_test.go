@@ -138,6 +138,61 @@ func TestTicketOptionPattern(t *testing.T) {
 	}
 }
 
+func TestNewTicketOptionFunctions(t *testing.T) {
+	tk := ticket.NewTicket(
+		ticket.WithDescription("narrative body"),
+		ticket.WithAssignee("agent-007"),
+		ticket.WithTags("backend", "api"),
+		ticket.WithAcceptanceCriteria("ac one", "ac two"),
+		ticket.WithNotes("note one", "note two"),
+		ticket.WithIntent("the why"),
+	)
+
+	if tk.Description != "narrative body" {
+		t.Errorf("Description: got %q, want %q", tk.Description, "narrative body")
+	}
+	if tk.Assignee != "agent-007" {
+		t.Errorf("Assignee: got %q, want %q", tk.Assignee, "agent-007")
+	}
+	if len(tk.Tags) != 2 || tk.Tags[0] != "backend" || tk.Tags[1] != "api" {
+		t.Errorf("Tags: got %v, want [backend api]", tk.Tags)
+	}
+	if len(tk.AcceptanceCriteria) != 2 || tk.AcceptanceCriteria[0] != "ac one" {
+		t.Errorf("AcceptanceCriteria: got %v, want [ac one ac two]", tk.AcceptanceCriteria)
+	}
+	if len(tk.Notes) != 2 || tk.Notes[0] != "note one" {
+		t.Errorf("Notes: got %v, want [note one note two]", tk.Notes)
+	}
+	if tk.Intent != "the why" {
+		t.Errorf("Intent: got %q, want %q", tk.Intent, "the why")
+	}
+
+	// All set fields must be marked present.
+	for _, field := range []string{"description", "assignee", "tags", "acceptance_criteria", "notes", "intent"} {
+		if !tk.Present[field] {
+			t.Errorf("Present[%q] should be true after option was applied", field)
+		}
+	}
+}
+
+func TestWithTagsVariadic(t *testing.T) {
+	tk := ticket.NewTicket(ticket.WithTags("x"))
+	if len(tk.Tags) != 1 || tk.Tags[0] != "x" {
+		t.Errorf("WithTags single: got %v", tk.Tags)
+	}
+	tk2 := ticket.NewTicket(ticket.WithTags())
+	if len(tk2.Tags) != 0 {
+		t.Errorf("WithTags empty: got %v", tk2.Tags)
+	}
+}
+
+func TestWithAcceptanceCriteriaVariadic(t *testing.T) {
+	tk := ticket.NewTicket(ticket.WithAcceptanceCriteria("only one"))
+	if len(tk.AcceptanceCriteria) != 1 {
+		t.Errorf("WithAcceptanceCriteria single: got %v", tk.AcceptanceCriteria)
+	}
+}
+
 func TestTicketStructZeroValues(t *testing.T) {
 	var tk ticket.Ticket
 
