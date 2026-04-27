@@ -1,8 +1,10 @@
 # epos
 
-Shared ticket system for the php-workx toolchain.
+A task and issue tracker for AI agents and their Humans.
 
-epos provides a canonical ticket model, a file-based store with YAML frontmatter Markdown storage, and a CLI for creating, querying, and managing tickets. It is designed as the single source of truth for task tracking across fabrikk (planning) and verk (execution).
+epos provides a canonical ticket model, a file-based store with YAML frontmatter Markdown storage, and a CLI for creating, querying, and managing tickets. It is designed as the single source of truth for task tracking with claim/release functionality.
+
+Provided as a CLI and Golang package.
 
 ## Architecture
 
@@ -148,17 +150,6 @@ epos lint
 | 2 | `ValidationError` |
 | 3 | `TicketNotFoundError` |
 | 4 | `AmbiguousIDError` |
-
-## Migration from fabrikk/verk
-
-epos replaces the ticket-related packages in both fabrikk and verk:
-
-- **fabrikk** ticket types and planning logic map directly to the `Ticket` struct's planning facet fields (`requirement_ids`, `source_refs`, `intent`, `constraints`, etc.).
-- **verk** execution and runtime state map to the execution facet fields and the `RuntimeState` sidecar format.
-- **tk-compatible markdown** is preserved as the storage format. The `Present` map tracks which fields were explicitly set, ensuring round-trip idempotency: fields not present in the original frontmatter are not re-emitted during marshal.
-- **Claims and leases** move from inline frontmatter (fabrikk) to sidecar JSON files (verk's existing pattern), standardized under `.tickets/.claims/`.
-
-To migrate, copy existing ticket Markdown files into the `.tickets/` directory. The `UnmarshalTicket` function handles both tk-style and epos-style frontmatter transparently.
 
 ## Requirements
 
