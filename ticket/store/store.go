@@ -43,17 +43,16 @@ func NewFileStore(dir string) (*FileStore, error) {
 	return &FileStore{Dir: dir}, nil
 }
 
-// ticketPath returns the file path for the given ticket ID.
-// filepath.Base strips any directory components from id, preventing path traversal.
+// ticketPath returns the file path for a validated ticket ID.
 func (s *FileStore) ticketPath(id string) string {
-	return filepath.Join(s.Dir, TicketsDir, filepath.Base(id)+TicketExt)
+	return filepath.Join(s.Dir, TicketsDir, id+TicketExt)
 }
 
 // Create writes a new ticket file. It returns *ticket.IDCollisionError if the
 // file already exists.
 func (s *FileStore) Create(t *ticket.Ticket) error {
-	if t.ID == "" {
-		return &ticket.ValidationError{Field: "id", Message: "required"}
+	if err := ticket.ValidateID(t.ID); err != nil {
+		return err
 	}
 	if t.Present == nil {
 		t.Present = make(map[string]bool)
@@ -93,8 +92,11 @@ func (s *FileStore) Create(t *ticket.Ticket) error {
 // Read loads a ticket by its full ID. It returns *ticket.TicketNotFoundError
 // if no file matches.
 func (s *FileStore) Read(id string) (*ticket.Ticket, error) {
+	if err := ticket.ValidateID(id); err != nil {
+		return nil, err
+	}
 	path := s.ticketPath(id)
-	data, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path uses a validated ticket ID
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, &ticket.TicketNotFoundError{ID: id}
@@ -118,15 +120,15 @@ func (s *FileStore) Read(id string) (*ticket.Ticket, error) {
 
 // Update writes the ticket file, preserving any existing Markdown body content.
 func (s *FileStore) Update(t *ticket.Ticket) error {
-	if t.ID == "" {
-		return &ticket.ValidationError{Field: "id", Message: "required"}
+	if err := ticket.ValidateID(t.ID); err != nil {
+		return err
 	}
 	if t.Present == nil {
 		t.Present = make(map[string]bool)
 	}
 	path := s.ticketPath(t.ID)
 	return withLock(path, func() error {
-		existing, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+		existing, err := os.ReadFile(path) //nolint:gosec // G304: path uses a validated ticket ID
 		if err != nil {
 			if os.IsNotExist(err) {
 				return &ticket.TicketNotFoundError{ID: t.ID}
@@ -145,6 +147,9 @@ func (s *FileStore) Update(t *ticket.Ticket) error {
 
 // Delete removes the ticket file for the given ID.
 func (s *FileStore) Delete(id string) error {
+	if err := ticket.ValidateID(id); err != nil {
+		return err
+	}
 	path := s.ticketPath(id)
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {
@@ -232,7 +237,7 @@ func (s *FileStore) AddNote(id, text string) error {
 	}
 	path := s.ticketPath(fullID)
 	return withLock(path, func() error {
-		existing, rerr := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+		existing, rerr := os.ReadFile(path) //nolint:gosec // G304: path uses a resolved ticket filename ID
 		if rerr != nil {
 			if os.IsNotExist(rerr) {
 				return &ticket.TicketNotFoundError{ID: fullID}
@@ -392,7 +397,7 @@ func (s *FileStore) linkOp(id, targetID string, add bool) error {
 // preserving the existing Markdown body. The caller is responsible for holding
 // the file lock.
 func (s *FileStore) writeFrontmatterUnderLock(path string, t *ticket.Ticket) error {
-	existing, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+	existing, err := os.ReadFile(path) //nolint:gosec // G304: path uses a resolved or validated ticket ID
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &ticket.TicketNotFoundError{ID: t.ID}

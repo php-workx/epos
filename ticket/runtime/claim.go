@@ -23,10 +23,9 @@ func resolveClaimsDir(dir string) string {
 	return filepath.Join(dir, ".tickets", ticket.ClaimsDir)
 }
 
-// sidecarPath returns the JSON sidecar path for ticketID within dir.
-// filepath.Base strips any directory components from ticketID, preventing path traversal.
+// sidecarPath returns the JSON sidecar path for a validated ticketID within dir.
 func sidecarPath(dir, ticketID string) string {
-	return filepath.Join(resolveClaimsDir(dir), filepath.Base(ticketID)+ticket.ClaimsSuffix)
+	return filepath.Join(resolveClaimsDir(dir), ticketID+ticket.ClaimsSuffix)
 }
 
 // flockPath returns the advisory lock file path for a sidecar path p.
@@ -37,8 +36,11 @@ func flockPath(p string) string {
 // ReadRuntimeState reads the runtime sidecar for ticketID.
 // If no sidecar exists yet, a zero-value RuntimeState (with TicketID set) is returned.
 func ReadRuntimeState(dir, ticketID string) (*ticket.RuntimeState, error) {
+	if err := validateRuntimeTicketID(ticketID); err != nil {
+		return nil, err
+	}
 	path := sidecarPath(dir, ticketID)
-	data, err := os.ReadFile(path) //nolint:gosec // G304 G703: path from sidecarPath which sanitizes via filepath.Base
+	data, err := os.ReadFile(path) //nolint:gosec // G304 G703: path uses a validated ticket ID
 	if errors.Is(err, os.ErrNotExist) {
 		return &ticket.RuntimeState{TicketID: ticketID}, nil
 	}
@@ -56,6 +58,12 @@ func ReadRuntimeState(dir, ticketID string) (*ticket.RuntimeState, error) {
 // It creates the claims directory if it does not exist, writes to a temp file,
 // then renames the temp file into place.
 func WriteRuntimeState(dir string, state *ticket.RuntimeState) error {
+	if state == nil {
+		return &ticket.ValidationError{Field: "state", Message: "must not be nil"}
+	}
+	if err := validateRuntimeTicketID(state.TicketID); err != nil {
+		return err
+	}
 	claimsDir := resolveClaimsDir(dir)
 	if err := os.MkdirAll(claimsDir, 0o750); err != nil {
 		return fmt.Errorf("create claims dir: %w", err)
@@ -76,10 +84,21 @@ func WriteRuntimeState(dir string, state *ticket.RuntimeState) error {
 	return nil
 }
 
+func validateRuntimeTicketID(ticketID string) error {
+	if err := ticket.ValidateID(ticketID); err != nil {
+		var validation *ticket.ValidationError
+		if errors.As(err, &validation) {
+			return &ticket.ValidationError{Field: "ticket_id", Message: validation.Message}
+		}
+		return err
+	}
+	return nil
+}
+
 // validateClaimIdentifier returns a ValidationError if ticketID or ownerID is empty.
 func validateClaimIdentifier(ticketID, ownerID string) error {
-	if ticketID == "" {
-		return &ticket.ValidationError{Field: "ticket_id", Message: "must not be empty"}
+	if err := validateRuntimeTicketID(ticketID); err != nil {
+		return err
 	}
 	if ownerID == "" {
 		return &ticket.ValidationError{Field: "owner_id", Message: "must not be empty"}
@@ -101,6 +120,9 @@ func validateClaimEligibility(status ticket.Status) error {
 // withExclusiveLock writes the returned state before releasing the lock.
 // The claims directory is created if it does not exist.
 func withExclusiveLock(dir, ticketID string, fn func(*ticket.RuntimeState) (*ticket.RuntimeState, error)) error {
+	if err := validateRuntimeTicketID(ticketID); err != nil {
+		return err
+	}
 	claimsDir := resolveClaimsDir(dir)
 	if err := os.MkdirAll(claimsDir, 0o750); err != nil {
 		return fmt.Errorf("create claims dir: %w", err)

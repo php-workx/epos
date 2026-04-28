@@ -37,6 +37,33 @@ func TestClaimAndRead(t *testing.T) {
 	}
 }
 
+func TestRuntimeStateRejectsInvalidTicketIDs(t *testing.T) {
+	dir := t.TempDir()
+	invalidIDs := []string{"../abc-1234", "abc/1234", "abc\\1234"}
+
+	for _, id := range invalidIDs {
+		t.Run("Read "+id, func(t *testing.T) {
+			_, err := ReadRuntimeState(dir, id)
+			requireValidationError(t, err)
+		})
+
+		t.Run("Write "+id, func(t *testing.T) {
+			err := WriteRuntimeState(dir, &ticket.RuntimeState{TicketID: id})
+			requireValidationError(t, err)
+		})
+
+		t.Run("Claim "+id, func(t *testing.T) {
+			err := Claim(dir, id, "agent-1", "local", DefaultLeaseDuration)
+			requireValidationError(t, err)
+		})
+	}
+}
+
+func TestWriteRuntimeStateRejectsNilState(t *testing.T) {
+	err := WriteRuntimeState(t.TempDir(), nil)
+	requireValidationError(t, err)
+}
+
 // TestClaimConflict verifies that when two goroutines race to claim the same
 // ticket, exactly one succeeds and the other receives *ticket.AlreadyClaimedError.
 func TestClaimConflict(t *testing.T) {
@@ -430,6 +457,9 @@ func TestValidateClaimIdentifier(t *testing.T) {
 	if err := validateClaimIdentifier("", "agent-1"); err == nil {
 		t.Error("expected error for empty ticketID")
 	}
+	if err := validateClaimIdentifier("../abc-1234", "agent-1"); err == nil {
+		t.Error("expected error for invalid ticketID")
+	}
 	if err := validateClaimIdentifier("abc-1234", ""); err == nil {
 		t.Error("expected error for empty ownerID")
 	}
@@ -465,5 +495,13 @@ func TestReleaseNotClaimed(t *testing.T) {
 	var notClaimed *ticket.NotClaimedError
 	if !errors.As(err, &notClaimed) {
 		t.Errorf("expected *ticket.NotClaimedError, got %T: %v", err, err)
+	}
+}
+
+func requireValidationError(t *testing.T, err error) {
+	t.Helper()
+	var validation *ticket.ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("expected *ticket.ValidationError, got %T: %v", err, err)
 	}
 }

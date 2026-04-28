@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +85,34 @@ func TestCreateRejectsEmptyID(t *testing.T) {
 	err := s.Create(tk)
 	if err == nil {
 		t.Fatal("Create: expected ValidationError for empty ID")
+	}
+}
+
+func TestCRUDRejectsInvalidPathIDs(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	invalidIDs := []string{"../epo-real", "foo/bar", "foo\\bar"}
+
+	for _, id := range invalidIDs {
+		t.Run("Create "+id, func(t *testing.T) {
+			tk := testutil.NewTestTicket("invalid create")
+			tk.ID = id
+			requireValidationError(t, s.Create(tk))
+		})
+
+		t.Run("Read "+id, func(t *testing.T) {
+			_, err := s.Read(id)
+			requireValidationError(t, err)
+		})
+
+		t.Run("Update "+id, func(t *testing.T) {
+			tk := testutil.NewTestTicket("invalid update")
+			tk.ID = id
+			requireValidationError(t, s.Update(tk))
+		})
+
+		t.Run("Delete "+id, func(t *testing.T) {
+			requireValidationError(t, s.Delete(id))
+		})
 	}
 }
 
@@ -306,5 +335,13 @@ func TestListEmptyStore(t *testing.T) {
 	}
 	if len(all) != 0 {
 		t.Errorf("List empty store: got %d tickets, want 0", len(all))
+	}
+}
+
+func requireValidationError(t *testing.T, err error) {
+	t.Helper()
+	var validation *ticket.ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("expected *ticket.ValidationError, got %T: %v", err, err)
 	}
 }
