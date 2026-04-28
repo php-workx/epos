@@ -81,7 +81,13 @@ func (s *FileStore) Create(t *ticket.Ticket) error {
 	if err != nil {
 		return fmt.Errorf("marshal ticket %q: %w", t.ID, err)
 	}
-	return os.WriteFile(path, data, 0o644)
+	return withLock(path, func() error {
+		// Re-check existence under the lock to close the race between Stat and write.
+		if _, statErr := os.Stat(path); statErr == nil {
+			return &ticket.IDCollisionError{ID: t.ID}
+		}
+		return atomicWrite(path, data)
+	})
 }
 
 // Read loads a ticket by its full ID. It returns *ticket.TicketNotFoundError
@@ -119,20 +125,22 @@ func (s *FileStore) Update(t *ticket.Ticket) error {
 		t.Present = make(map[string]bool)
 	}
 	path := s.ticketPath(t.ID)
-	existing, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
-	if err != nil {
-		if os.IsNotExist(err) {
-			return &ticket.TicketNotFoundError{ID: t.ID}
+	return withLock(path, func() error {
+		existing, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+		if err != nil {
+			if os.IsNotExist(err) {
+				return &ticket.TicketNotFoundError{ID: t.ID}
+			}
+			return fmt.Errorf("read ticket %q: %w", t.ID, err)
 		}
-		return fmt.Errorf("read ticket %q: %w", t.ID, err)
-	}
-	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	t.Present["updated_at"] = true
-	data, err := markdown.UpdateFrontmatter(existing, t)
-	if err != nil {
-		return fmt.Errorf("update ticket %q: %w", t.ID, err)
-	}
-	return os.WriteFile(path, data, 0o644) //nolint:gosec // G703: path from ticketPath which sanitizes via filepath.Base
+		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		t.Present["updated_at"] = true
+		data, err := markdown.UpdateFrontmatter(existing, t)
+		if err != nil {
+			return fmt.Errorf("update ticket %q: %w", t.ID, err)
+		}
+		return atomicWrite(path, data)
+	})
 }
 
 // Delete removes the ticket file for the given ID.
