@@ -119,6 +119,25 @@ func TestUnmarshalTicketBasic(t *testing.T) {
 	}
 }
 
+func TestUnmarshalTicketCRLFFrontmatter(t *testing.T) {
+	input := "---\r\nid: abc-crlf\r\ntitle: CRLF ticket\r\ntype: task\r\nstatus: open\r\n---\r\n\r\nbody text\r\n"
+
+	tkt, err := markdown.UnmarshalTicket([]byte(input))
+	if err != nil {
+		t.Fatalf("UnmarshalTicket error: %v", err)
+	}
+
+	if tkt.ID != "abc-crlf" {
+		t.Errorf("ID: got %q, want %q", tkt.ID, "abc-crlf")
+	}
+	if tkt.Title != "CRLF ticket" {
+		t.Errorf("Title: got %q, want %q", tkt.Title, "CRLF ticket")
+	}
+	if tkt.Status != ticket.StatusOpen {
+		t.Errorf("Status: got %q, want %q", tkt.Status, ticket.StatusOpen)
+	}
+}
+
 func TestUnmarshalTicketPopulatesPresent(t *testing.T) {
 	input := "---\nid: abc-1234\ntitle: My ticket\ntype: task\nstatus: open\npriority: 5\n---\n"
 

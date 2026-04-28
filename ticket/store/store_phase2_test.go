@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/php-workx/epos/ticket"
+	"github.com/php-workx/epos/ticket/graph"
 	"github.com/php-workx/epos/ticket/store"
 	"github.com/php-workx/epos/ticket/testutil"
 )
@@ -168,6 +169,16 @@ func TestAddNote(t *testing.T) {
 	if !contains(content, "first note") || !contains(content, "second note") {
 		t.Errorf("notes not accumulated: %s", content)
 	}
+	got, err := s.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read after AddNote: %v", err)
+	}
+	if len(got.Notes) != 2 {
+		t.Fatalf("Notes length = %d, want 2 (%v)", len(got.Notes), got.Notes)
+	}
+	if !contains(got.Notes[0], "first note") || !contains(got.Notes[1], "second note") {
+		t.Errorf("frontmatter notes not accumulated: %v", got.Notes)
+	}
 }
 
 // ─── Deps / cycle detection ──────────────────────────────────────────────────
@@ -230,6 +241,53 @@ func TestAddDepCycleDetection(t *testing.T) {
 	err = s.AddDep(a.ID, a.ID)
 	if !errors.As(err, new(*ticket.CycleDetectedError)) {
 		t.Errorf("self-cycle: expected *CycleDetectedError, got %T: %v", err, err)
+	}
+}
+
+func TestAddDepConcurrentCycleDetection(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	a := testutil.MustCreateTestTicket(t, s, "a")
+	b := testutil.MustCreateTestTicket(t, s, "b")
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for _, pair := range [][2]string{{a.ID, b.ID}, {b.ID, a.ID}} {
+		wg.Add(1)
+		go func(id, depID string) {
+			defer wg.Done()
+			<-start
+			errs <- s.AddDep(id, depID)
+		}(pair[0], pair[1])
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+
+	successes := 0
+	cycles := 0
+	for err := range errs {
+		if err == nil {
+			successes++
+			continue
+		}
+		var cycleErr *ticket.CycleDetectedError
+		if errors.As(err, &cycleErr) {
+			cycles++
+		} else {
+			t.Fatalf("unexpected AddDep error: %T: %v", err, err)
+		}
+	}
+	if successes != 1 || cycles != 1 {
+		t.Fatalf("AddDep results: successes=%d cycles=%d, want 1/1", successes, cycles)
+	}
+
+	all, err := s.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if detected := graph.DetectCycles(all); len(detected) > 0 {
+		t.Fatalf("store contains dependency cycle after concurrent AddDep: %v", detected)
 	}
 }
 

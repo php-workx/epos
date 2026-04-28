@@ -263,7 +263,7 @@ func UpdateBody(existing []byte, transform func(string) string) []byte {
 // If the document does not start with "---\n" the entire content is returned as
 // the body and the frontmatter is empty.
 func splitFrontmatterBody(data []byte) (frontmatter, body string) {
-	content := string(data)
+	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 
 	if !strings.HasPrefix(content, "---\n") {
 		return "", content

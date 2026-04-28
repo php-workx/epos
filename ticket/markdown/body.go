@@ -85,6 +85,12 @@ func ExtractHeadingTitle(body string) (string, bool) {
 	return "", false
 }
 
+// FormatNote returns note text prefixed with the canonical UTC timestamp.
+func FormatNote(note string) string {
+	ts := nowFunc().UTC().Format(time.RFC3339)
+	return ts + ": " + note
+}
+
 // AddNote appends a timestamped note to the ## Notes section of body.
 // If no ## Notes section exists one is created at the end of the body.
 // The timestamp is formatted in RFC 3339 UTC.
@@ -93,8 +99,12 @@ func ExtractHeadingTitle(body string) (string, bool) {
 //
 //   - 2006-01-02T15:04:05Z: <note>
 func AddNote(body, note string) string {
-	ts := nowFunc().UTC().Format(time.RFC3339)
-	entry := "- " + ts + ": " + note
+	return AddFormattedNote(body, FormatNote(note))
+}
+
+// AddFormattedNote appends a preformatted note to the ## Notes section of body.
+func AddFormattedNote(body, formattedNote string) string {
+	entry := "- " + formattedNote
 
 	const heading = "## Notes"
 

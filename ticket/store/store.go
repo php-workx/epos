@@ -48,6 +48,10 @@ func (s *FileStore) ticketPath(id string) string {
 	return filepath.Join(s.Dir, TicketsDir, id+TicketExt)
 }
 
+func (s *FileStore) graphLockPath() string {
+	return filepath.Join(s.Dir, TicketsDir, ".graph")
+}
+
 // Create writes a new ticket file. It returns *ticket.IDCollisionError if the
 // file already exists.
 func (s *FileStore) Create(t *ticket.Ticket) error {
@@ -244,9 +248,24 @@ func (s *FileStore) AddNote(id, text string) error {
 			}
 			return fmt.Errorf("read ticket %q: %w", fullID, rerr)
 		}
+		t, uerr := markdown.UnmarshalTicket(existing)
+		if uerr != nil {
+			return &ticket.CorruptYAMLError{Path: path, Cause: uerr}
+		}
+		if t.ID == "" {
+			t.ID = fullID
+			t.Present["id"] = true
+		}
+		formattedNote := markdown.FormatNote(text)
 		updated := markdown.UpdateBody(existing, func(body string) string {
-			return markdown.AddNote(body, text)
+			return markdown.AddFormattedNote(body, formattedNote)
 		})
+		t.Notes = append(t.Notes, formattedNote)
+		t.Present["notes"] = true
+		updated, uerr = markdown.UpdateFrontmatter(updated, t)
+		if uerr != nil {
+			return fmt.Errorf("update ticket %q notes: %w", fullID, uerr)
+		}
 		return atomicWrite(path, updated)
 	})
 }
@@ -268,7 +287,7 @@ func (s *FileStore) AddDep(id, depID string) error {
 		return &ticket.CycleDetectedError{Cycle: []string{fullID, fullDep}}
 	}
 	path := s.ticketPath(fullID)
-	return withLock(path, func() error {
+	return withLocks([]string{s.graphLockPath(), path}, func() error {
 		t, rerr := s.Read(fullID)
 		if rerr != nil {
 			return rerr
