@@ -237,6 +237,22 @@ func UpdateFrontmatter(existing []byte, t *ticket.Ticket) ([]byte, error) {
 	return renderFrontmatterBody(yamlBytes, body), nil
 }
 
+// UpdateBody returns existing with its Markdown body replaced by transform(body).
+// The YAML frontmatter is preserved verbatim. If existing has no frontmatter,
+// the entire content is treated as body.
+func UpdateBody(existing []byte, transform func(string) string) []byte {
+	fm, body := splitFrontmatterBody(existing)
+	newBody := transform(body)
+	var buf bytes.Buffer
+	if fm != "" {
+		buf.WriteString("---\n")
+		buf.WriteString(fm)
+		buf.WriteString("---\n")
+	}
+	buf.WriteString(newBody)
+	return buf.Bytes()
+}
+
 // ─── private helpers ──────────────────────────────────────────────────────────
 
 // splitFrontmatterBody splits a Markdown document into its YAML frontmatter and
