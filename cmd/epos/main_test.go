@@ -67,22 +67,22 @@ func TestMain(m *testing.M) {
 }
 
 // epos runs the epos CLI binary with the given arguments, using dir as the
-// --dir flag. It returns stdout, stderr, and the exit code.
-func epos(t *testing.T, dir string, args ...string) (stdout, stderr string, exitCode int) {
+// --dir flag. It returns combined stdout/stderr, stderr, and the exit code.
+func epos(t *testing.T, dir string, args ...string) (output, stderr string, exitCode int) {
 	t.Helper()
 	fullArgs := append([]string{"--dir", dir}, args...)
 	cmd := exec.Command(binaryPath, fullArgs...)
-	out, err := cmd.CombinedOutput()
-	stdout = string(out)
+	combinedOut, err := cmd.CombinedOutput()
+	output = string(combinedOut)
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode = exitErr.ExitCode()
-		stderr = string(exitErr.Stderr)
+		stderr = ""
 	} else if err != nil {
 		// Binary failed to start.
 		exitCode = -1
 		stderr = err.Error()
 	}
-	return stdout, stderr, exitCode
+	return output, stderr, exitCode
 }
 
 // --- Integration tests ---
@@ -844,6 +844,43 @@ func TestCLIEditStdin(t *testing.T) {
 	}
 }
 
+func TestCLIEditStdinCanClearFields(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Clear via stdin",
+		"--priority", "5",
+		"--body", "body to clear",
+		"--ac", "criterion to clear",
+		"--assignee", "alice",
+		"--tags", "one,two",
+		"--intent", "intent to clear",
+	)
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	input := `{"priority": 0, "body": "", "acceptance_criteria": [], "assignee": "", "tags": [], "intent": ""}`
+	stdout, exitCode = eposStdin(t, dir, input, "edit", id, "--stdin")
+	if exitCode != 0 {
+		t.Fatalf("edit --stdin clear fields: exit %d: %s", exitCode, stdout)
+	}
+
+	stdout, _, exitCode = epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("show --json after clear: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Priority != 0 {
+		t.Errorf("Priority after clear edit: got %d, want 0", tk.Priority)
+	}
+	if tk.Description != "" || len(tk.AcceptanceCriteria) != 0 || tk.Assignee != "" || len(tk.Tags) != 0 || tk.Intent != "" {
+		t.Errorf("edit --stdin did not clear fields: %+v", tk)
+	}
+}
+
 func TestCLIEditNotFound(t *testing.T) {
 	dir := t.TempDir()
 	_, _, exitCode := epos(t, dir, "edit", "nonexistent-id", "--priority", "1")
@@ -929,6 +966,38 @@ func TestCLILintExitsNonZeroOnInvalidTicket(t *testing.T) {
 	stdout, _, exitCode := epos(t, dir, "lint")
 	if exitCode != 1 {
 		t.Errorf("lint with invalid ticket: expected exit 1, got %d; output: %s", exitCode, stdout)
+	}
+}
+
+func TestCLILintJSONOmitsValidTickets(t *testing.T) {
+	dir := t.TempDir()
+	s := testutil.NewStoreInDir(t, dir)
+
+	valid := testutil.MustCreateTicket(t, s, testutil.NewTestTicket("Valid lint ticket"))
+	invalid := testutil.NewTestTicket("Invalid lint ticket")
+	invalid.Type = "not-a-valid-type"
+	invalid = testutil.MustCreateTicket(t, s, invalid)
+
+	stdout, _, exitCode := epos(t, dir, "lint", "--json")
+	if exitCode != 0 {
+		t.Fatalf("lint --json: exit %d; output: %s", exitCode, stdout)
+	}
+
+	var result struct {
+		Tickets []struct {
+			ID string `json:"id"`
+		} `json:"tickets"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("parse lint JSON: %v\n%s", err, stdout)
+	}
+	if len(result.Tickets) != 1 || result.Tickets[0].ID != invalid.ID {
+		t.Fatalf("lint --json tickets = %+v, want only %s", result.Tickets, invalid.ID)
+	}
+	for _, entry := range result.Tickets {
+		if entry.ID == valid.ID {
+			t.Fatalf("lint --json included valid ticket %s", valid.ID)
+		}
 	}
 }
 

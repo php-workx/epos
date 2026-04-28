@@ -26,15 +26,70 @@ var (
 
 // editTicketSpec is the JSON input schema for epos edit --stdin.
 type editTicketSpec struct {
-	Priority           *int     `json:"priority"`
-	Parent             string   `json:"parent"`
-	Deps               []string `json:"deps"`
-	Body               string   `json:"body"`
-	AcceptanceCriteria []string `json:"acceptance_criteria"`
-	Notes              []string `json:"notes"`
-	Assignee           string   `json:"assignee"`
-	Tags               []string `json:"tags"`
-	Intent             string   `json:"intent"`
+	Priority           *int            `json:"priority"`
+	Parent             string          `json:"parent"`
+	Deps               []string        `json:"deps"`
+	Body               string          `json:"body"`
+	AcceptanceCriteria []string        `json:"acceptance_criteria"`
+	Notes              []string        `json:"notes"`
+	Assignee           string          `json:"assignee"`
+	Tags               []string        `json:"tags"`
+	Intent             string          `json:"intent"`
+	Present            map[string]bool `json:"-"`
+}
+
+func (s *editTicketSpec) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	type editTicketSpecJSON struct {
+		Priority           *int     `json:"priority"`
+		Parent             string   `json:"parent"`
+		Deps               []string `json:"deps"`
+		Body               string   `json:"body"`
+		AcceptanceCriteria []string `json:"acceptance_criteria"`
+		Notes              []string `json:"notes"`
+		Assignee           string   `json:"assignee"`
+		Tags               []string `json:"tags"`
+		Intent             string   `json:"intent"`
+	}
+	var decoded editTicketSpecJSON
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	*s = editTicketSpec{
+		Priority:           decoded.Priority,
+		Parent:             decoded.Parent,
+		Deps:               decoded.Deps,
+		Body:               decoded.Body,
+		AcceptanceCriteria: decoded.AcceptanceCriteria,
+		Notes:              decoded.Notes,
+		Assignee:           decoded.Assignee,
+		Tags:               decoded.Tags,
+		Intent:             decoded.Intent,
+		Present:            make(map[string]bool, len(raw)),
+	}
+	for field := range raw {
+		switch field {
+		case "priority", "parent", "deps", "body", "acceptance_criteria", "notes", "assignee", "tags", "intent":
+			s.Present[field] = true
+		}
+	}
+	return nil
+}
+
+func (s *editTicketSpec) markPresent(field string) {
+	if s.Present == nil {
+		s.Present = make(map[string]bool)
+	}
+	s.Present[field] = true
+}
+
+func (s *editTicketSpec) has(field string) bool {
+	return s.Present != nil && s.Present[field]
 }
 
 func validateEditSpec(spec *editTicketSpec) error {
@@ -85,15 +140,19 @@ var editCmd = &cobra.Command{
 		// CLI flags override stdin values; only apply flags that were explicitly set.
 		if cmd.Flags().Changed("priority") {
 			spec.Priority = &editPriority
+			spec.markPresent("priority")
 		}
 		if cmd.Flags().Changed("parent") {
 			spec.Parent = editParent
+			spec.markPresent("parent")
 		}
 		if cmd.Flags().Changed("deps") {
 			spec.Deps = editDeps
+			spec.markPresent("deps")
 		}
 		if cmd.Flags().Changed("body") {
 			spec.Body = editBody
+			spec.markPresent("body")
 		}
 		if cmd.Flags().Changed("body-file") {
 			data, err := os.ReadFile(editBodyFile) //nolint:gosec // G304: path is the user's explicit --body-file argument
@@ -101,21 +160,27 @@ var editCmd = &cobra.Command{
 				return &ticket.ValidationError{Field: "body-file", Message: err.Error()}
 			}
 			spec.Body = string(data)
+			spec.markPresent("body")
 		}
 		if cmd.Flags().Changed("ac") {
 			spec.AcceptanceCriteria = editAC
+			spec.markPresent("acceptance_criteria")
 		}
 		if cmd.Flags().Changed("note") {
 			spec.Notes = editNotes
+			spec.markPresent("notes")
 		}
 		if cmd.Flags().Changed("assignee") {
 			spec.Assignee = editAssignee
+			spec.markPresent("assignee")
 		}
 		if cmd.Flags().Changed("tags") {
 			spec.Tags = editTags
+			spec.markPresent("tags")
 		}
 		if cmd.Flags().Changed("intent") {
 			spec.Intent = editIntent
+			spec.markPresent("intent")
 		}
 
 		if err := validateEditSpec(spec); err != nil {
@@ -123,39 +188,39 @@ var editCmd = &cobra.Command{
 		}
 
 		// Apply spec fields to ticket, marking changed fields present.
-		if spec.Priority != nil {
+		if spec.has("priority") && spec.Priority != nil {
 			tk.Priority = *spec.Priority
 			tk.Present["priority"] = true
 		}
-		if spec.Parent != "" {
+		if spec.has("parent") {
 			tk.Parent = spec.Parent
 			tk.Present["parent"] = true
 		}
-		if len(spec.Deps) > 0 {
+		if spec.has("deps") {
 			tk.Deps = spec.Deps
 			tk.Present["deps"] = true
 		}
-		if spec.Body != "" {
+		if spec.has("body") {
 			tk.Description = spec.Body
 			tk.Present["description"] = true
 		}
-		if len(spec.AcceptanceCriteria) > 0 {
+		if spec.has("acceptance_criteria") {
 			tk.AcceptanceCriteria = spec.AcceptanceCriteria
 			tk.Present["acceptance_criteria"] = true
 		}
-		if len(spec.Notes) > 0 {
+		if spec.has("notes") {
 			tk.Notes = spec.Notes
 			tk.Present["notes"] = true
 		}
-		if spec.Assignee != "" {
+		if spec.has("assignee") {
 			tk.Assignee = spec.Assignee
 			tk.Present["assignee"] = true
 		}
-		if len(spec.Tags) > 0 {
+		if spec.has("tags") {
 			tk.Tags = spec.Tags
 			tk.Present["tags"] = true
 		}
-		if spec.Intent != "" {
+		if spec.has("intent") {
 			tk.Intent = spec.Intent
 			tk.Present["intent"] = true
 		}

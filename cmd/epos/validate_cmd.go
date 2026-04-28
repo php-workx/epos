@@ -69,11 +69,11 @@ var lintCmd = &cobra.Command{
 			if len(errs) > 0 {
 				hasErrors = true
 				errorCount++
+				allErrors = append(allErrors, struct {
+					ID     string                   `json:"id"`
+					Errors []ticket.ValidationError `json:"errors"`
+				}{ID: tk.ID, Errors: errs})
 			}
-			allErrors = append(allErrors, struct {
-				ID     string                   `json:"id"`
-				Errors []ticket.ValidationError `json:"errors"`
-			}{ID: tk.ID, Errors: errs})
 		}
 
 		// Also check for dependency cycles.
