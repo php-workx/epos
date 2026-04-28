@@ -105,10 +105,8 @@ func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 	if spec.Intent != "" {
 		opts = append(opts, ticket.WithIntent(spec.Intent))
 	}
-	tk := ticket.NewTicket(opts...)
-	tk.Priority = spec.Priority
-	tk.Present["priority"] = true
-	return tk
+	opts = append(opts, ticket.WithPriority(spec.Priority))
+	return ticket.NewTicket(opts...)
 }
 
 var newCmd = &cobra.Command{

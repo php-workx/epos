@@ -7,6 +7,7 @@ import (
 
 	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/markdown"
+	"gopkg.in/yaml.v3"
 )
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -519,7 +520,7 @@ func TestMarshalYAMLReturnsMappingNode(t *testing.T) {
 	if node == nil {
 		t.Fatal("MarshalYAML returned nil node")
 	}
-	if node.Kind != 4 { // yaml.MappingNode == 4
+	if node.Kind != yaml.MappingNode {
 		t.Errorf("expected MappingNode (kind 4), got kind %d", node.Kind)
 	}
 }
@@ -634,13 +635,4 @@ func TestDescriptionAndNotesEmittedInYAML(t *testing.T) {
 	if !strings.Contains(fm, "- note a") {
 		t.Errorf("notes not in frontmatter:\n%s", fm)
 	}
-}
-
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -195,6 +195,14 @@ func WithStatus(s Status) TicketOption {
 	}
 }
 
+// WithPriority sets the Ticket priority and marks the field as present in frontmatter.
+func WithPriority(priority int) TicketOption {
+	return func(t *Ticket) {
+		t.Priority = priority
+		t.Present["priority"] = true
+	}
+}
+
 // WithParent sets the Ticket parent ID and marks the field as present in frontmatter.
 func WithParent(parent string) TicketOption {
 	return func(t *Ticket) {

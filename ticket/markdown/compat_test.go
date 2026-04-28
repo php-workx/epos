@@ -10,12 +10,9 @@ import (
 
 // ─── StatusToTK ──────────────────────────────────────────────────────────────
 
-// TestStatusMappingAllEight verifies that all 9 epos extended statuses
-// (including StatusHeld) map to the correct tk 3-status values.
-// The test name is "AllEight" per the acceptance criteria; it covers all 9
-// distinct extended statuses (the count of 8 in the name refers to the 8
-// non-held extended statuses plus held itself).
-func TestStatusMappingAllEight(t *testing.T) {
+// TestStatusMappingAllExtended verifies that all epos extended statuses
+// map to the correct tk 3-status values.
+func TestStatusMappingAllExtended(t *testing.T) {
 	tests := []struct {
 		input ticket.Status
 		want  ticket.Status

@@ -7,6 +7,8 @@ import (
 	"github.com/php-workx/epos/ticket"
 )
 
+var nowFunc = time.Now
+
 // RenderSections generates a Markdown body from structured Ticket fields.
 // Only non-empty fields produce output. The YAML frontmatter is authoritative;
 // the body is a rendered view and is not re-parsed on unmarshal.
@@ -91,7 +93,7 @@ func ExtractHeadingTitle(body string) (string, bool) {
 //
 //   - 2006-01-02T15:04:05Z: <note>
 func AddNote(body, note string) string {
-	ts := time.Now().UTC().Format(time.RFC3339)
+	ts := nowFunc().UTC().Format(time.RFC3339)
 	entry := "- " + ts + ": " + note
 
 	const heading = "## Notes"
