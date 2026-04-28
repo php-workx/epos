@@ -45,6 +45,29 @@ func allDepsClosed(deps []string, byID map[string]ticket.Ticket) bool {
 	return true
 }
 
+func hasOpenDeps(t *ticket.Ticket, byID map[string]ticket.Ticket) bool {
+	return len(t.Deps) > 0 && !allDepsClosed(t.Deps, byID)
+}
+
+func parentBlocksWork(t *ticket.Ticket, byID map[string]ticket.Ticket) bool {
+	seen := map[string]bool{}
+	for parentID := t.Parent; parentID != ""; {
+		if seen[parentID] {
+			return true
+		}
+		seen[parentID] = true
+		parent, ok := byID[parentID]
+		if !ok {
+			return false
+		}
+		if hasOpenDeps(&parent, byID) {
+			return true
+		}
+		parentID = parent.Parent
+	}
+	return false
+}
+
 // sortByPriorityThenID sorts a ticket slice by priority descending, then ID
 // ascending.  The sort is applied in-place.
 func sortByPriorityThenID(tickets []ticket.Ticket) {
@@ -57,9 +80,10 @@ func sortByPriorityThenID(tickets []ticket.Ticket) {
 }
 
 // ReadyFilter returns tickets from all that are ready to be worked:
-//   - Status is pending or repair_pending.
+//   - Status is open, pending, or repair_pending.
 //   - All dep IDs resolve to closed tickets (status closed, done, or failed).
 //     Deps absent from all are treated as not closed.
+//   - No parent ticket in all is blocked by open dependencies.
 //
 // The result is sorted by priority descending, then ID ascending.
 func ReadyFilter(all []ticket.Ticket) []ticket.Ticket {
@@ -72,15 +96,19 @@ func ReadyFilter(all []ticket.Ticket) []ticket.Ticket {
 		if !allDepsClosed(all[i].Deps, byID) {
 			continue
 		}
+		if parentBlocksWork(&all[i], byID) {
+			continue
+		}
 		result = append(result, all[i])
 	}
 	sortByPriorityThenID(result)
 	return result
 }
 
-// BlockedFilter returns tickets from all that are blocked by open dependencies:
-//   - Status is pending or repair_pending.
-//   - Has at least one dep that is not in a closed status (closed, done, or failed).
+// BlockedFilter returns tickets from all that are blocked:
+//   - Status is open, pending, or repair_pending.
+//   - Has at least one dep that is not in a closed status (closed, done, or failed), or
+//   - Has a parent ticket in all that is blocked by open dependencies.
 //
 // The result is sorted by priority descending, then ID ascending.
 func BlockedFilter(all []ticket.Ticket) []ticket.Ticket {
@@ -90,10 +118,7 @@ func BlockedFilter(all []ticket.Ticket) []ticket.Ticket {
 		if !readyStatuses[all[i].Status] {
 			continue
 		}
-		if len(all[i].Deps) == 0 {
-			continue
-		}
-		if allDepsClosed(all[i].Deps, byID) {
+		if !hasOpenDeps(&all[i], byID) && !parentBlocksWork(&all[i], byID) {
 			continue
 		}
 		result = append(result, all[i])
@@ -215,8 +240,9 @@ func FilterChildren(all []ticket.Ticket, parentID string) []ticket.Ticket {
 
 // FilterReadyChildren returns tickets from all that satisfy all of:
 //   - t.Parent == parentID
-//   - Status is pending or repair_pending
+//   - Status is open, pending, or repair_pending
 //   - All deps are closed (closed, done, or failed); absent deps treated as not closed
+//   - No parent ticket in all is blocked by open dependencies
 //   - isClaimed(t.ID) returns false
 //
 // Pass nil for isClaimed to skip claim filtering.
@@ -232,6 +258,9 @@ func FilterReadyChildren(all []ticket.Ticket, parentID string, isClaimed func(st
 			continue
 		}
 		if !allDepsClosed(all[i].Deps, byID) {
+			continue
+		}
+		if parentBlocksWork(&all[i], byID) {
 			continue
 		}
 		if isClaimed != nil && isClaimed(all[i].ID) {

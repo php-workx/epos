@@ -139,6 +139,21 @@ func TestReadyEmpty(t *testing.T) {
 	}
 }
 
+func TestReadyExcludesParentBlockedByOpenDep(t *testing.T) {
+	t.Parallel()
+	tickets := []ticket.Ticket{
+		mk("dep", ticket.StatusOpen, 0, nil, ""),
+		mk("parent", ticket.StatusPending, 0, []string{"dep"}, ""),
+		mk("child", ticket.StatusPending, 0, nil, "parent"),
+	}
+	got := graph.ReadyFilter(tickets)
+	for _, tk := range got {
+		if tk.ID == "child" {
+			t.Fatalf("ReadyFilter: child of blocked parent should not be ready")
+		}
+	}
+}
+
 // ---- BlockedFilter ---------------------------------------------------------
 
 // TestBlockedOpenDep: ticket with Deps ["a"] where a is open appears in BlockedFilter.
@@ -192,6 +207,18 @@ func TestBlockedExcludesAllDepsClosed(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("BlockedFilter: expected 0 tickets (dep is closed), got %d", len(got))
 	}
+}
+
+func TestBlockedIncludesChildWhenParentBlocked(t *testing.T) {
+	t.Parallel()
+	tickets := []ticket.Ticket{
+		mk("dep", ticket.StatusOpen, 0, nil, ""),
+		mk("parent", ticket.StatusPending, 0, []string{"dep"}, ""),
+		mk("child", ticket.StatusPending, 0, nil, "parent"),
+	}
+	got := graph.BlockedFilter(tickets)
+	want := []string{"child", "parent"}
+	assertOrder(t, "BlockedFilter parent-blocked", got, want)
 }
 
 // TestBlockedSortOrder: BlockedFilter sorts by priority descending then ID ascending.
@@ -374,6 +401,19 @@ func TestFilterReadyChildren(t *testing.T) {
 			len(want), want, len(got), ids(got))
 	}
 	assertOrder(t, "FilterReadyChildren", got, want)
+}
+
+func TestFilterReadyChildrenExcludesParentBlocked(t *testing.T) {
+	t.Parallel()
+	tickets := []ticket.Ticket{
+		mk("dep", ticket.StatusOpen, 0, nil, ""),
+		mk("parent", ticket.StatusPending, 0, []string{"dep"}, ""),
+		mk("child", ticket.StatusPending, 0, nil, "parent"),
+	}
+	got := graph.FilterReadyChildren(tickets, "parent", nil)
+	if len(got) != 0 {
+		t.Fatalf("FilterReadyChildren: expected no children under blocked parent, got %v", ids(got))
+	}
 }
 
 // TestFilterReadyChildrenNilIsClaimed: nil isClaimed means no claim filter.
