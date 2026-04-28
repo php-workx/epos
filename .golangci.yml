@@ -85,9 +85,7 @@ linters:
     gosec:
       excludes:
         - G104  # unhandled errors — errcheck covers this
-        - G304  # file inclusion via variable — epos constructs paths from ticket dir
         - G306  # WriteFile 0644 — standard for non-secret data files
-        - G703  # path traversal via taint analysis — paths built from ticket dir + filepath.Base(id)
 
   exclusions:
     generated: lax

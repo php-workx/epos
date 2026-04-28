@@ -55,6 +55,9 @@ func (s *FileStore) Create(t *ticket.Ticket) error {
 	if t.ID == "" {
 		return &ticket.ValidationError{Field: "id", Message: "required"}
 	}
+	if t.Present == nil {
+		t.Present = make(map[string]bool)
+	}
 	path := s.ticketPath(t.ID)
 	if _, err := os.Stat(path); err == nil {
 		return &ticket.IDCollisionError{ID: t.ID}
@@ -85,7 +88,7 @@ func (s *FileStore) Create(t *ticket.Ticket) error {
 // if no file matches.
 func (s *FileStore) Read(id string) (*ticket.Ticket, error) {
 	path := s.ticketPath(id)
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, &ticket.TicketNotFoundError{ID: id}
@@ -96,6 +99,14 @@ func (s *FileStore) Read(id string) (*ticket.Ticket, error) {
 	if err != nil {
 		return nil, &ticket.CorruptYAMLError{Path: path, Cause: err}
 	}
+	// Backfill ID from filename — tk-compatible files may omit the id field.
+	if t.ID == "" {
+		if t.Present == nil {
+			t.Present = make(map[string]bool)
+		}
+		t.ID = id
+		t.Present["id"] = true
+	}
 	return t, nil
 }
 
@@ -104,8 +115,11 @@ func (s *FileStore) Update(t *ticket.Ticket) error {
 	if t.ID == "" {
 		return &ticket.ValidationError{Field: "id", Message: "required"}
 	}
+	if t.Present == nil {
+		t.Present = make(map[string]bool)
+	}
 	path := s.ticketPath(t.ID)
-	existing, err := os.ReadFile(path)
+	existing, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &ticket.TicketNotFoundError{ID: t.ID}
@@ -118,7 +132,7 @@ func (s *FileStore) Update(t *ticket.Ticket) error {
 	if err != nil {
 		return fmt.Errorf("update ticket %q: %w", t.ID, err)
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o644) //nolint:gosec // G703: path from ticketPath which sanitizes via filepath.Base
 }
 
 // Delete removes the ticket file for the given ID.
@@ -149,7 +163,7 @@ func (s *FileStore) List() ([]ticket.Ticket, error) {
 			continue
 		}
 		fileID := strings.TrimSuffix(entry.Name(), TicketExt)
-		data, err := os.ReadFile(filepath.Join(td, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(td, entry.Name())) //nolint:gosec // G304: entry.Name() is a directory entry, cannot contain path separators
 		if err != nil {
 			continue
 		}

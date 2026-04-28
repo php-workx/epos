@@ -144,7 +144,7 @@ var newCmd = &cobra.Command{
 			spec.Body = newBody
 		}
 		if cmd.Flags().Changed("body-file") {
-			data, err := os.ReadFile(newBodyFile)
+			data, err := os.ReadFile(newBodyFile) //nolint:gosec // G304: path is the user's explicit --body-file argument
 			if err != nil {
 				return &ticket.ValidationError{Field: "body-file", Message: err.Error()}
 			}

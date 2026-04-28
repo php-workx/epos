@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/graph"
 	"github.com/spf13/cobra"
 )
@@ -68,7 +69,20 @@ var blockedCmd = &cobra.Command{
 			return err
 		}
 
-		blocked := graph.BlockedFilter(tickets)
+		var blocked []ticket.Ticket
+		if len(args) > 0 && args[0] != "" {
+			parentID, _, err := resolveTicketID(s, args[0])
+			if err != nil {
+				return err
+			}
+			for _, t := range graph.BlockedFilter(tickets) {
+				if t.Parent == parentID {
+					blocked = append(blocked, t)
+				}
+			}
+		} else {
+			blocked = graph.BlockedFilter(tickets)
+		}
 
 		if jsonFlag {
 			return outputJSON(cmd, blocked)

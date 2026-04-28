@@ -47,6 +47,21 @@ var showCmd = &cobra.Command{
 		if tk.StatusReason != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "Reason:   %s\n", tk.StatusReason)
 		}
+		if tk.Description != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "Description:\n  %s\n", tk.Description)
+		}
+		if len(tk.AcceptanceCriteria) > 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "Acceptance criteria:")
+			for _, ac := range tk.AcceptanceCriteria {
+				fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", ac)
+			}
+		}
+		if len(tk.Notes) > 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "Notes:")
+			for _, n := range tk.Notes {
+				fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", n)
+			}
+		}
 
 		return nil
 	},

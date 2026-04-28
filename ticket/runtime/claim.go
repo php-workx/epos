@@ -24,8 +24,9 @@ func resolveClaimsDir(dir string) string {
 }
 
 // sidecarPath returns the JSON sidecar path for ticketID within dir.
+// filepath.Base strips any directory components from ticketID, preventing path traversal.
 func sidecarPath(dir, ticketID string) string {
-	return filepath.Join(resolveClaimsDir(dir), ticketID+ticket.ClaimsSuffix)
+	return filepath.Join(resolveClaimsDir(dir), filepath.Base(ticketID)+ticket.ClaimsSuffix)
 }
 
 // flockPath returns the advisory lock file path for a sidecar path p.
@@ -37,7 +38,7 @@ func flockPath(p string) string {
 // If no sidecar exists yet, a zero-value RuntimeState (with TicketID set) is returned.
 func ReadRuntimeState(dir, ticketID string) (*ticket.RuntimeState, error) {
 	path := sidecarPath(dir, ticketID)
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304 G703: path from sidecarPath which sanitizes via filepath.Base
 	if errors.Is(err, os.ErrNotExist) {
 		return &ticket.RuntimeState{TicketID: ticketID}, nil
 	}
@@ -142,6 +143,7 @@ func Claim(dir, ticketID, ownerID, runID string, duration time.Duration) error {
 			if state.Lease != nil && state.Lease.LeaseID != "" {
 				leaseID = state.Lease.LeaseID
 			}
+			state.Claim.ClaimBackend = runID
 			state.Lease = &ticket.Lease{
 				LeaseID:   leaseID,
 				ExpiresAt: time.Now().Add(duration),
@@ -278,7 +280,7 @@ func ReadClaimsForRun(dir, runID string) ([]*ticket.RuntimeState, error) {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ticket.ClaimsSuffix {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(claimsDir, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(claimsDir, entry.Name())) //nolint:gosec // G304: entry.Name() is a directory entry, cannot contain path separators
 		if err != nil {
 			return nil, fmt.Errorf("read claim file %q: %w", entry.Name(), err)
 		}

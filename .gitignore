@@ -5,6 +5,7 @@
 
 # Ticket lock files (flock sidecars — top-level and claim subdirectory)
 .tickets
+*.lock
 
 # Go build artifacts
 /bin/

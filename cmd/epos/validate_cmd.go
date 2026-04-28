@@ -37,7 +37,7 @@ var validateCmd = &cobra.Command{
 		for _, e := range errs {
 			fmt.Fprintf(cmd.OutOrStdout(), "error: %s: %s\n", e.Field, e.Message)
 		}
-		return nil
+		return fmt.Errorf("ticket %s has %d validation error(s)", args[0], len(errs))
 	},
 }
 
@@ -62,11 +62,13 @@ var lintCmd = &cobra.Command{
 			Errors []ticket.ValidationError `json:"errors"`
 		}
 
+		var errorCount int
 		hasErrors := false
 		for _, tk := range tickets {
 			errs := ticket.Validate(tk)
 			if len(errs) > 0 {
 				hasErrors = true
+				errorCount++
 			}
 			allErrors = append(allErrors, struct {
 				ID     string                   `json:"id"`
@@ -99,9 +101,9 @@ var lintCmd = &cobra.Command{
 
 		if !hasErrors {
 			fmt.Fprintln(cmd.OutOrStdout(), "all tickets valid")
+			return nil
 		}
-
-		return nil
+		return fmt.Errorf("lint found %d ticket(s) with errors, %d cycle(s)", errorCount, len(cycles))
 	},
 }
 

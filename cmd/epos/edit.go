@@ -26,7 +26,7 @@ var (
 
 // editTicketSpec is the JSON input schema for epos edit --stdin.
 type editTicketSpec struct {
-	Priority           int      `json:"priority"`
+	Priority           *int     `json:"priority"`
 	Parent             string   `json:"parent"`
 	Deps               []string `json:"deps"`
 	Body               string   `json:"body"`
@@ -38,7 +38,7 @@ type editTicketSpec struct {
 }
 
 func validateEditSpec(spec *editTicketSpec) error {
-	if spec.Priority < 0 {
+	if spec.Priority != nil && *spec.Priority < 0 {
 		return &ticket.ValidationError{Field: "priority", Message: "must be >= 0"}
 	}
 	seen := make(map[string]bool, len(spec.Tags))
@@ -84,7 +84,7 @@ var editCmd = &cobra.Command{
 
 		// CLI flags override stdin values; only apply flags that were explicitly set.
 		if cmd.Flags().Changed("priority") {
-			spec.Priority = editPriority
+			spec.Priority = &editPriority
 		}
 		if cmd.Flags().Changed("parent") {
 			spec.Parent = editParent
@@ -96,7 +96,7 @@ var editCmd = &cobra.Command{
 			spec.Body = editBody
 		}
 		if cmd.Flags().Changed("body-file") {
-			data, err := os.ReadFile(editBodyFile)
+			data, err := os.ReadFile(editBodyFile) //nolint:gosec // G304: path is the user's explicit --body-file argument
 			if err != nil {
 				return &ticket.ValidationError{Field: "body-file", Message: err.Error()}
 			}
@@ -123,8 +123,8 @@ var editCmd = &cobra.Command{
 		}
 
 		// Apply spec fields to ticket, marking changed fields present.
-		if cmd.Flags().Changed("priority") || (editStdin && spec.Priority != 0) {
-			tk.Priority = spec.Priority
+		if spec.Priority != nil {
+			tk.Priority = *spec.Priority
 			tk.Present["priority"] = true
 		}
 		if spec.Parent != "" {

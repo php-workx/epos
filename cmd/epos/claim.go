@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var claimOwner string
+var (
+	claimOwner   string
+	releaseOwner string
+)
 
 // claimCmd claims a ticket for an agent.
 var claimCmd = &cobra.Command{
@@ -54,7 +57,7 @@ var releaseCmd = &cobra.Command{
 			return err
 		}
 
-		if claimOwner == "" {
+		if releaseOwner == "" {
 			return &ticket.ValidationError{Field: "owner", Message: "required: --owner"}
 		}
 
@@ -64,12 +67,12 @@ var releaseCmd = &cobra.Command{
 		}
 
 		// Release the claim and set status back to pending.
-		if err := runtime.Release(dirFlag, fullID, claimOwner, ticket.StatusPending, ""); err != nil {
+		if err := runtime.Release(dirFlag, fullID, releaseOwner, ticket.StatusPending, ""); err != nil {
 			return err
 		}
 
 		if jsonFlag {
-			return outputJSON(cmd, map[string]string{"id": fullID, "status": "released"})
+			return outputJSON(cmd, map[string]string{"id": fullID, "status": string(ticket.StatusPending)})
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "released %s\n", fullID)
@@ -79,7 +82,7 @@ var releaseCmd = &cobra.Command{
 
 func init() {
 	claimCmd.Flags().StringVarP(&claimOwner, "owner", "o", "", "agent ID claiming the ticket")
-	releaseCmd.Flags().StringVarP(&claimOwner, "owner", "o", "", "agent ID releasing the ticket")
+	releaseCmd.Flags().StringVarP(&releaseOwner, "owner", "o", "", "agent ID releasing the ticket")
 	rootCmd.AddCommand(claimCmd)
 	rootCmd.AddCommand(releaseCmd)
 }

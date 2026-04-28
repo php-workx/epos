@@ -115,9 +115,6 @@ type Ticket struct {
     ExtendedStatus string `yaml:"extended_status" json:"extended_status,omitempty"`
     StatusReason   string `yaml:"status_reason"   json:"status_reason,omitempty"`
 
-    // Symmetric links (fabrikk has these; verk does not)
-    Links []string `yaml:"links,omitempty" json:"links,omitempty"`
-
     // Forward compatibility
     Extra map[string]any `yaml:",inline" json:"-"`
 
@@ -255,7 +252,7 @@ Implement `FileStore` (CRUD, atomic writes, file locking). Implement dependency 
 
 ### Phase 3: CLI MVP
 
-Implement `epos` CLI with: `new`, `show`, `validate`, `lint`, `ready`, `blocked`, `claim`, `release`, `close`, `reopen`, `export`. Machine-readable JSON output for every command.
+Implement `epos` CLI with: `new`, `edit`, `show`, `validate`, `lint`, `ready`, `blocked`, `claim`, `release`, `close`, `reopen`, `export`. Machine-readable JSON output for every command.
 
 ### Phase 4: `fabrikk` integration
 

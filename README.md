@@ -80,6 +80,68 @@ epos new "Implement auth module" --type feature --priority 3
 # Output: epo-implement-auth-module-a1b2
 ```
 
+Create a ticket with rich content:
+
+```bash
+epos new "Atomic writes" \
+  --type task --priority 3 \
+  --body "Implement fsync+rename in ticket/store/atomic.go" \
+  --ac "grep -r 'os.WriteFile' ticket/store/store.go returns no matches" \
+  --ac "go test ./ticket/store/... exits 0" \
+  --note "gofrs/flock is already in go.mod" \
+  --assignee agent-1 \
+  --tags "store,reliability" \
+  --intent "prevent partial writes on crash"
+```
+
+Or via JSON stdin (useful for programmatic ticket creation):
+
+```bash
+echo '{
+  "title": "JSON-created ticket",
+  "type": "task",
+  "body": "Created from stdin",
+  "acceptance_criteria": ["criterion one", "criterion two"],
+  "assignee": "agent-1",
+  "tags": ["backend", "api"]
+}' | epos new --stdin
+```
+
+**`epos new` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--type` | Ticket type: `epic`, `task`, `issue`, `feature`, `bug`, `chore`, `spike`, `doc` (default: `task`) |
+| `--priority` | Priority integer, higher = more important (default: 0) |
+| `--parent` | Parent ticket ID |
+| `--deps` | Comma-separated dependency ticket IDs |
+| `--body` | Narrative description |
+| `--body-file` | Path to file whose content becomes the body |
+| `--ac` | Acceptance criterion (repeatable; one value per flag) |
+| `--note` | Initial note (repeatable) |
+| `--assignee` | Assignee name or identifier |
+| `--tags` | Comma-separated tags |
+| `--intent` | High-level intent for the ticket |
+| `--stdin` | Read ticket spec as JSON from stdin (flags override stdin values) |
+
+### Edit a ticket
+
+Update fields on an existing ticket without touching its body content:
+
+```bash
+epos edit epo-auth --priority 5 --assignee agent-2
+epos edit epo-auth --ac "new acceptance criterion" --note "follow-up note"
+```
+
+Or via JSON stdin:
+
+```bash
+echo '{"body": "updated narrative", "acceptance_criteria": ["new criterion"]}' \
+  | epos edit epo-auth --stdin
+```
+
+**`epos edit` flags:** same as `epos new` except `--type` (type cannot change after creation).
+
 ### Show a ticket
 
 ```bash

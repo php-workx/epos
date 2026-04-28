@@ -14,7 +14,9 @@ func GenerateID(prefix string) string {
 	}
 	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("crypto/rand.Read: %v", err))
+	}
 	id := make([]byte, 0, len(prefix)+1+4)
 	id = append(id, prefix...)
 	id = append(id, '-')
@@ -53,6 +55,10 @@ func GenerateIDWithSuffix(title string) string {
 	for len(slug) > 0 && slug[len(slug)-1] == '-' {
 		slug = slug[:len(slug)-1]
 	}
+	// Fallback when title contains no alphanumeric characters.
+	if len(slug) == 0 {
+		slug = []byte("ticket")
+	}
 	// Truncate to max 32 chars for the slug portion.
 	if len(slug) > 32 {
 		slug = slug[:32]
@@ -60,7 +66,9 @@ func GenerateIDWithSuffix(title string) string {
 
 	// Generate a 4-char random suffix for uniqueness.
 	b := make([]byte, 4)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("crypto/rand.Read: %v", err))
+	}
 	suffix := make([]byte, 4)
 	for i, c := range b {
 		suffix[i] = charset[c%byte(len(charset))]

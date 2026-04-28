@@ -881,6 +881,208 @@ func TestCLIEditDuplicateTags(t *testing.T) {
 	}
 }
 
+// ─── epos validate / lint: non-zero exit on errors ───────────────────────────
+
+func TestCLIValidateExitsNonZeroOnInvalidTicket(t *testing.T) {
+	dir := t.TempDir()
+	s := testutil.NewStoreInDir(t, dir)
+
+	// Create a ticket with an invalid type via the store (bypasses CLI validation).
+	tk := testutil.NewTestTicket("Invalid type ticket")
+	tk.Type = "not-a-valid-type"
+	testutil.MustCreateTicket(t, s, tk)
+
+	stdout, _, exitCode := epos(t, dir, "validate", tk.ID)
+	if exitCode != 1 {
+		t.Errorf("validate on invalid ticket: expected exit 1, got %d; output: %s", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, "error:") {
+		t.Errorf("validate: expected error lines in output, got: %s", stdout)
+	}
+}
+
+func TestCLIValidateExitsZeroOnValidTicket(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Valid ticket", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "validate", id)
+	if exitCode != 0 {
+		t.Errorf("validate on valid ticket: expected exit 0, got %d; output: %s", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, "valid") {
+		t.Errorf("validate: expected 'valid' in output, got: %s", stdout)
+	}
+}
+
+func TestCLILintExitsNonZeroOnInvalidTicket(t *testing.T) {
+	dir := t.TempDir()
+	s := testutil.NewStoreInDir(t, dir)
+
+	tk := testutil.NewTestTicket("Invalid type for lint")
+	tk.Type = "not-a-valid-type"
+	testutil.MustCreateTicket(t, s, tk)
+
+	stdout, _, exitCode := epos(t, dir, "lint")
+	if exitCode != 1 {
+		t.Errorf("lint with invalid ticket: expected exit 1, got %d; output: %s", exitCode, stdout)
+	}
+}
+
+func TestCLILintExitsNonZeroOnCycle(t *testing.T) {
+	dir := t.TempDir()
+	s := testutil.NewStoreInDir(t, dir)
+
+	// Two tickets with a mutual dep cycle: A → B, B → A.
+	tk1 := testutil.NewTestTicket("Cycle ticket A")
+	tk2 := testutil.NewTestTicket("Cycle ticket B")
+	tk1.Deps = []string{tk2.ID}
+	tk1.Present["deps"] = true
+	tk2.Deps = []string{tk1.ID}
+	tk2.Present["deps"] = true
+	testutil.MustCreateTicket(t, s, tk1)
+	testutil.MustCreateTicket(t, s, tk2)
+
+	stdout, _, exitCode := epos(t, dir, "lint")
+	if exitCode != 1 {
+		t.Errorf("lint with dep cycle: expected exit 1, got %d; output: %s", exitCode, stdout)
+	}
+}
+
+// ─── epos show: rich content fields ──────────────────────────────────────────
+
+func TestCLIShowDisplaysDescription(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Desc show test", "--body", "body text here")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id)
+	if exitCode != 0 {
+		t.Fatalf("show: exit %d: %s", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, "body text here") {
+		t.Errorf("show: expected description in output, got:\n%s", stdout)
+	}
+}
+
+func TestCLIShowDisplaysAcceptanceCriteria(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "AC show test", "--ac", "my criterion")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id)
+	if exitCode != 0 {
+		t.Fatalf("show: exit %d: %s", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, "my criterion") {
+		t.Errorf("show: expected AC in output, got:\n%s", stdout)
+	}
+}
+
+func TestCLIShowDisplaysNotes(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Notes show test", "--note", "my note text")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id)
+	if exitCode != 0 {
+		t.Fatalf("show: exit %d: %s", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, "my note text") {
+		t.Errorf("show: expected note in output, got:\n%s", stdout)
+	}
+}
+
+func TestCLIShowOmitsEmptyContentFields(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "No content ticket")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	stdout, _, exitCode = epos(t, dir, "show", id)
+	if exitCode != 0 {
+		t.Fatalf("show: exit %d: %s", exitCode, stdout)
+	}
+	if strings.Contains(stdout, "Description:") {
+		t.Errorf("show: empty Description should not appear in output, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Acceptance criteria:") {
+		t.Errorf("show: empty AC should not appear in output, got:\n%s", stdout)
+	}
+}
+
+// ─── cross-tool round-trip ────────────────────────────────────────────────────
+
+func TestCLIRoundTripEposToTk(t *testing.T) {
+	if _, err := exec.LookPath("tk"); err != nil {
+		t.Skip("tk not in PATH")
+	}
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Round trip ticket",
+		"--body", "round trip body",
+		"--ac", "round trip criterion",
+	)
+	if exitCode != 0 {
+		t.Fatalf("epos new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	cmd := exec.Command("tk", "show", id)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("tk show: %v\n%s", err, out)
+	}
+	output := string(out)
+	if !strings.Contains(output, "round trip body") {
+		t.Errorf("tk show: expected body in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "round trip criterion") {
+		t.Errorf("tk show: expected AC in output, got:\n%s", output)
+	}
+}
+
+func TestCLIRoundTripTkToEpos(t *testing.T) {
+	if _, err := exec.LookPath("tk"); err != nil {
+		t.Skip("tk not in PATH")
+	}
+	dir := t.TempDir()
+
+	cmd := exec.Command("tk", "create", "TK created ticket")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("tk create: %v\n%s", err, out)
+	}
+	id := strings.TrimSpace(string(out))
+
+	stdout, _, exitCode := epos(t, dir, "show", id, "--json")
+	if exitCode != 0 {
+		t.Fatalf("epos show --json: exit %d: %s", exitCode, stdout)
+	}
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Title != "TK created ticket" {
+		t.Errorf("round trip title: got %q, want %q", tk.Title, "TK created ticket")
+	}
+}
+
 // ─── close preserves body ─────────────────────────────────────────────────────
 
 func TestCLIClosePreservesBody(t *testing.T) {
