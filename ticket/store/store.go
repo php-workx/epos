@@ -222,6 +222,220 @@ func (s *FileStore) ResolveID(partial string) (string, error) {
 	}
 }
 
+// AddNote appends a timestamped note to the ticket's ## Notes Markdown section.
+// id may be a full or partial ticket ID. The read-modify-write is performed
+// under an exclusive lock and committed atomically.
+func (s *FileStore) AddNote(id, text string) error {
+	fullID, err := s.ResolveID(id)
+	if err != nil {
+		return err
+	}
+	path := s.ticketPath(fullID)
+	return withLock(path, func() error {
+		existing, rerr := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+		if rerr != nil {
+			if os.IsNotExist(rerr) {
+				return &ticket.TicketNotFoundError{ID: fullID}
+			}
+			return fmt.Errorf("read ticket %q: %w", fullID, rerr)
+		}
+		updated := markdown.UpdateBody(existing, func(body string) string {
+			return markdown.AddNote(body, text)
+		})
+		return atomicWrite(path, updated)
+	})
+}
+
+// AddDep adds depID to the ticket's Deps list. Both id and depID may be
+// partial. AddDep returns *ticket.CycleDetectedError if the addition would
+// create a dependency cycle. If depID is already present the operation is a
+// no-op.
+func (s *FileStore) AddDep(id, depID string) error {
+	fullID, err := s.ResolveID(id)
+	if err != nil {
+		return err
+	}
+	fullDep, err := s.ResolveID(depID)
+	if err != nil {
+		return err
+	}
+	if fullID == fullDep {
+		return &ticket.CycleDetectedError{Cycle: []string{fullID, fullDep}}
+	}
+	path := s.ticketPath(fullID)
+	return withLock(path, func() error {
+		t, rerr := s.Read(fullID)
+		if rerr != nil {
+			return rerr
+		}
+		for _, d := range t.Deps {
+			if d == fullDep {
+				return nil // already present
+			}
+		}
+		t.Deps = append(t.Deps, fullDep)
+		if t.Present == nil {
+			t.Present = make(map[string]bool)
+		}
+		t.Present["deps"] = true
+
+		all, lerr := s.List()
+		if lerr != nil {
+			return lerr
+		}
+		for i := range all {
+			if all[i].ID == fullID {
+				all[i].Deps = t.Deps
+				break
+			}
+		}
+		if cycles := graph.DetectCycles(all); len(cycles) > 0 {
+			return &ticket.CycleDetectedError{Cycle: cycles[0]}
+		}
+		return s.writeFrontmatterUnderLock(path, t)
+	})
+}
+
+// RemoveDep removes depID from the ticket's Deps list. id and depID may be
+// partial. Removing an absent dep is a no-op.
+func (s *FileStore) RemoveDep(id, depID string) error {
+	fullID, err := s.ResolveID(id)
+	if err != nil {
+		return err
+	}
+	// depID need not exist as a ticket; we just remove the literal string match.
+	// Try to resolve to canonical form when possible, but tolerate not-found.
+	target := depID
+	if resolved, rerr := s.ResolveID(depID); rerr == nil {
+		target = resolved
+	}
+	path := s.ticketPath(fullID)
+	return withLock(path, func() error {
+		t, rerr := s.Read(fullID)
+		if rerr != nil {
+			return rerr
+		}
+		filtered := t.Deps[:0]
+		removed := false
+		for _, d := range t.Deps {
+			if d == target {
+				removed = true
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		if !removed {
+			return nil
+		}
+		t.Deps = filtered
+		if t.Present == nil {
+			t.Present = make(map[string]bool)
+		}
+		t.Present["deps"] = true
+		return s.writeFrontmatterUnderLock(path, t)
+	})
+}
+
+// Link creates a symmetric link between id and targetID: each ticket's Links
+// slice gains the other's ID. Both files are updated atomically under a
+// combined lock acquired in deterministic path order.
+func (s *FileStore) Link(id, targetID string) error {
+	return s.linkOp(id, targetID, true)
+}
+
+// Unlink removes the symmetric link between id and targetID. Removing an
+// absent link is a no-op on the affected side.
+func (s *FileStore) Unlink(id, targetID string) error {
+	return s.linkOp(id, targetID, false)
+}
+
+func (s *FileStore) linkOp(id, targetID string, add bool) error {
+	fullA, err := s.ResolveID(id)
+	if err != nil {
+		return err
+	}
+	fullB, err := s.ResolveID(targetID)
+	if err != nil {
+		return err
+	}
+	if fullA == fullB {
+		return &ticket.ValidationError{Field: "links", Message: "cannot link a ticket to itself"}
+	}
+	pathA := s.ticketPath(fullA)
+	pathB := s.ticketPath(fullB)
+	return withLocks([]string{pathA, pathB}, func() error {
+		ta, rerr := s.Read(fullA)
+		if rerr != nil {
+			return rerr
+		}
+		tb, rerr := s.Read(fullB)
+		if rerr != nil {
+			return rerr
+		}
+		if add {
+			ta.Links = appendUnique(ta.Links, fullB)
+			tb.Links = appendUnique(tb.Links, fullA)
+		} else {
+			ta.Links = removeFirst(ta.Links, fullB)
+			tb.Links = removeFirst(tb.Links, fullA)
+		}
+		markPresent(ta, "links")
+		markPresent(tb, "links")
+		if werr := s.writeFrontmatterUnderLock(pathA, ta); werr != nil {
+			return werr
+		}
+		return s.writeFrontmatterUnderLock(pathB, tb)
+	})
+}
+
+// writeFrontmatterUnderLock rewrites the ticket file at path with t's frontmatter,
+// preserving the existing Markdown body. The caller is responsible for holding
+// the file lock.
+func (s *FileStore) writeFrontmatterUnderLock(path string, t *ticket.Ticket) error {
+	existing, err := os.ReadFile(path) //nolint:gosec // G304: path from ticketPath which sanitizes via filepath.Base
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &ticket.TicketNotFoundError{ID: t.ID}
+		}
+		return fmt.Errorf("read ticket %q: %w", t.ID, err)
+	}
+	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if t.Present == nil {
+		t.Present = make(map[string]bool)
+	}
+	t.Present["updated_at"] = true
+	data, err := markdown.UpdateFrontmatter(existing, t)
+	if err != nil {
+		return fmt.Errorf("update ticket %q: %w", t.ID, err)
+	}
+	return atomicWrite(path, data)
+}
+
+func appendUnique(slice []string, v string) []string {
+	for _, s := range slice {
+		if s == v {
+			return slice
+		}
+	}
+	return append(slice, v)
+}
+
+func removeFirst(slice []string, v string) []string {
+	for i, s := range slice {
+		if s == v {
+			return append(slice[:i], slice[i+1:]...)
+		}
+	}
+	return slice
+}
+
+func markPresent(t *ticket.Ticket, key string) {
+	if t.Present == nil {
+		t.Present = make(map[string]bool)
+	}
+	t.Present[key] = true
+}
+
 // ListAllChildren returns all tickets whose Parent field equals parentID.
 func (s *FileStore) ListAllChildren(parentID string) ([]ticket.Ticket, error) {
 	all, err := s.List()
