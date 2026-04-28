@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -41,7 +42,10 @@ type newTicketSpec struct {
 	Intent             string   `json:"intent"`
 }
 
-const defaultTicketType = "task"
+const (
+	defaultTicketType = "task"
+	newIDMaxAttempts  = 8
+)
 
 var validTicketTypeSet = map[string]bool{
 	"epic": true, defaultTicketType: true, "issue": true, "feature": true,
@@ -109,6 +113,34 @@ func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 	return ticket.NewTicket(opts...)
 }
 
+func createTicketWithGeneratedID(s *store.FileStore, spec *newTicketSpec, generateID func(string) string, attempts int) (*ticket.Ticket, error) {
+	var lastCollision *ticket.IDCollisionError
+	for range attempts {
+		tk := specToTicket(spec)
+		tk.ID = generateID(spec.Title)
+		tk.Present["id"] = true
+
+		if errs := ticket.Validate(*tk); len(errs) > 0 {
+			e := errs[0]
+			return nil, &e
+		}
+
+		if err := s.Create(tk); err != nil {
+			var collision *ticket.IDCollisionError
+			if errors.As(err, &collision) {
+				lastCollision = collision
+				continue
+			}
+			return nil, err
+		}
+		return tk, nil
+	}
+	if lastCollision != nil {
+		return nil, fmt.Errorf("generate unique ticket ID after %d attempts: %w", attempts, lastCollision)
+	}
+	return nil, &ticket.ValidationError{Field: "id", Message: "could not generate ticket ID"}
+}
+
 var newCmd = &cobra.Command{
 	Use:   "new <title>",
 	Short: "Create a new ticket",
@@ -168,20 +200,12 @@ var newCmd = &cobra.Command{
 			return err
 		}
 
-		tk := specToTicket(spec)
-		tk.ID = store.GenerateIDWithSuffix(spec.Title)
-		tk.Present["id"] = true
-
-		if errs := ticket.Validate(*tk); len(errs) > 0 {
-			e := errs[0]
-			return &e
-		}
-
 		s, err := store.NewFileStore(dirFlag)
 		if err != nil {
 			return err
 		}
-		if err := s.Create(tk); err != nil {
+		tk, err := createTicketWithGeneratedID(s, spec, store.GenerateIDWithSuffix, newIDMaxAttempts)
+		if err != nil {
 			return err
 		}
 

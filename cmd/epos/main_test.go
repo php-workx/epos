@@ -104,6 +104,32 @@ func TestCLINew(t *testing.T) {
 	}
 }
 
+func TestCreateTicketWithGeneratedIDRetriesCollisions(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	colliding := testutil.NewTestTicket("existing")
+	colliding.ID = "epo-collide"
+	if err := s.Create(colliding); err != nil {
+		t.Fatalf("Create colliding ticket: %v", err)
+	}
+
+	ids := []string{"epo-collide", "epo-unique"}
+	spec := &newTicketSpec{Title: "new collision test", Type: defaultTicketType}
+	tk, err := createTicketWithGeneratedID(s, spec, func(string) string {
+		next := ids[0]
+		ids = ids[1:]
+		return next
+	}, 2)
+	if err != nil {
+		t.Fatalf("createTicketWithGeneratedID: %v", err)
+	}
+	if tk.ID != "epo-unique" {
+		t.Fatalf("created ID = %q, want %q", tk.ID, "epo-unique")
+	}
+	if _, err := s.Read("epo-unique"); err != nil {
+		t.Fatalf("Read created ticket: %v", err)
+	}
+}
+
 // TestCLIFullWorkflow exercises the full end-to-end workflow:
 //
 //	create → ready → blocked → claim → release → close → export
