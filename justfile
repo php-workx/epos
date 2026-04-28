@@ -144,7 +144,7 @@ format:
 
 # Auto-fix formatting and lint issues, then verify
 autofix: format
-    {{go_tool}} golangci-lint run --fix ./... 2>/dev/null || true
+    {{go_tool}} golangci-lint run --fix ./...
 
 # Set up git hooks and development environment
 setup: install-dev install-hooks

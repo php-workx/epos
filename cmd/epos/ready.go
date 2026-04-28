@@ -24,7 +24,6 @@ var readyCmd = &cobra.Command{
 			return err
 		}
 
-		var result []interface{}
 		if len(args) > 0 && args[0] != "" {
 			// Filter by parent.
 			parentID, _, err := resolveTicketID(s, args[0])
@@ -38,7 +37,6 @@ var readyCmd = &cobra.Command{
 			for _, t := range children {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", t.ID, t.Title)
 			}
-			_ = result
 			return nil
 		}
 

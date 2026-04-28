@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var statusReason string
+var (
+	closeReason  string
+	reopenReason string
+)
 
 // closeCmd transitions a ticket to closed status.
 var closeCmd = &cobra.Command{
@@ -27,8 +30,8 @@ var closeCmd = &cobra.Command{
 
 		tk.Status = ticket.StatusClosed
 		tk.Present["status"] = true
-		if statusReason != "" {
-			tk.StatusReason = statusReason
+		if closeReason != "" {
+			tk.StatusReason = closeReason
 			tk.Present["status_reason"] = true
 		}
 
@@ -63,8 +66,8 @@ var reopenCmd = &cobra.Command{
 
 		tk.Status = ticket.StatusOpen
 		tk.Present["status"] = true
-		if statusReason != "" {
-			tk.StatusReason = statusReason
+		if reopenReason != "" {
+			tk.StatusReason = reopenReason
 			tk.Present["status_reason"] = true
 		}
 
@@ -82,8 +85,8 @@ var reopenCmd = &cobra.Command{
 }
 
 func init() {
-	closeCmd.Flags().StringVarP(&statusReason, "reason", "r", "", "reason for the status change")
-	reopenCmd.Flags().StringVarP(&statusReason, "reason", "r", "", "reason for the status change")
+	closeCmd.Flags().StringVarP(&closeReason, "reason", "r", "", "reason for the status change")
+	reopenCmd.Flags().StringVarP(&reopenReason, "reason", "r", "", "reason for the status change")
 	rootCmd.AddCommand(closeCmd)
 	rootCmd.AddCommand(reopenCmd)
 }
