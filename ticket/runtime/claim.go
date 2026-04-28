@@ -73,13 +73,44 @@ func WriteRuntimeState(dir string, state *ticket.RuntimeState) error {
 		return fmt.Errorf("marshal runtime state %q: %w", state.TicketID, err)
 	}
 	path := sidecarPath(dir, state.TicketID)
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(data, '\n'), 0o644); err != nil {
+	tmp, err := os.CreateTemp(claimsDir, state.TicketID+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp runtime state %q: %w", state.TicketID, err)
+	}
+	tmpName := tmp.Name()
+	cleanup := func() {
+		_ = os.Remove(tmpName)
+	}
+	defer func() {
+		if err != nil {
+			cleanup()
+		}
+	}()
+	if _, err = tmp.Write(append(data, '\n')); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("write temp runtime state %q: %w", state.TicketID, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err = tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("fsync temp runtime state %q: %w", state.TicketID, err)
+	}
+	if err = tmp.Close(); err != nil {
+		return fmt.Errorf("close temp runtime state %q: %w", state.TicketID, err)
+	}
+	if err = os.Chmod(tmpName, 0o644); err != nil { //nolint:gosec // G302: sidecars are non-secret local runtime state
+		return fmt.Errorf("chmod temp runtime state %q: %w", state.TicketID, err)
+	}
+	if err = os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("commit runtime state %q: %w", state.TicketID, err)
+	}
+	cleanup = func() {}
+	claims, err := os.Open(claimsDir) //nolint:gosec // G304: claimsDir is derived from caller-provided store root
+	if err != nil {
+		return fmt.Errorf("open claims dir: %w", err)
+	}
+	defer func() { _ = claims.Close() }()
+	if err = claims.Sync(); err != nil {
+		return fmt.Errorf("fsync claims dir: %w", err)
 	}
 	return nil
 }
@@ -269,6 +300,9 @@ func ReclaimExpired(dir, ticketID, ownerID, runID string, duration time.Duration
 			if state.Lease != nil && time.Now().Before(state.Lease.ExpiresAt) {
 				return nil, &ticket.AlreadyClaimedError{TicketID: ticketID, ClaimedBy: state.Claim.ClaimedBy}
 			}
+		}
+		if err := validateClaimEligibility(state.Status); err != nil {
+			return nil, err
 		}
 		now := time.Now()
 		state.Claim = &ticket.Claim{

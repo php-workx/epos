@@ -3,6 +3,7 @@ package runtime
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -62,6 +63,56 @@ func TestRuntimeStateRejectsInvalidTicketIDs(t *testing.T) {
 func TestWriteRuntimeStateRejectsNilState(t *testing.T) {
 	err := WriteRuntimeState(t.TempDir(), nil)
 	requireValidationError(t, err)
+}
+
+func TestWriteRuntimeStateConcurrentWriters(t *testing.T) {
+	dir := t.TempDir()
+
+	const writers = 20
+	start := make(chan struct{})
+	errs := make(chan error, writers)
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			<-start
+			errs <- WriteRuntimeState(dir, &ticket.RuntimeState{
+				TicketID: "abc-race",
+				Claim: &ticket.Claim{
+					ClaimedBy:    fmt.Sprintf("agent-%d", idx),
+					ClaimBackend: "run",
+					ClaimedAt:    time.Now(),
+				},
+			})
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("WriteRuntimeState concurrent writer failed: %v", err)
+		}
+	}
+
+	state, err := ReadRuntimeState(dir, "abc-race")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.TicketID != "abc-race" || state.Claim == nil {
+		t.Fatalf("unexpected final state: %+v", state)
+	}
+
+	entries, err := os.ReadDir(resolveClaimsDir(dir))
+	if err != nil {
+		t.Fatalf("ReadDir claims: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp") {
+			t.Fatalf("leftover temp runtime sidecar: %s", entry.Name())
+		}
+	}
 }
 
 // TestClaimConflict verifies that when two goroutines race to claim the same
@@ -410,6 +461,42 @@ func TestReclaimExpiredBlockedOnValidLease(t *testing.T) {
 	var claimErr *ticket.AlreadyClaimedError
 	if !errors.As(err, &claimErr) {
 		t.Errorf("expected *ticket.AlreadyClaimedError, got %T: %v", err, err)
+	}
+}
+
+func TestReclaimExpiredRejectsIneligibleStatus(t *testing.T) {
+	dir := t.TempDir()
+
+	expiredClosed := &ticket.RuntimeState{
+		TicketID: "abc-closed",
+		Status:   ticket.StatusClosed,
+		Claim: &ticket.Claim{
+			ClaimedBy:    "agent-old",
+			ClaimBackend: "run-old",
+			ClaimedAt:    time.Now().Add(-2 * time.Hour),
+		},
+		Lease: &ticket.Lease{
+			LeaseID:   "old-lease",
+			ExpiresAt: time.Now().Add(-time.Hour),
+		},
+	}
+	if err := WriteRuntimeState(dir, expiredClosed); err != nil {
+		t.Fatalf("WriteRuntimeState: %v", err)
+	}
+
+	err := ReclaimExpired(dir, "abc-closed", "agent-new", "run-new", DefaultLeaseDuration)
+	if err == nil {
+		t.Fatal("expected ineligible status error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not eligible") {
+		t.Fatalf("expected not eligible error, got: %v", err)
+	}
+	state, readErr := ReadRuntimeState(dir, "abc-closed")
+	if readErr != nil {
+		t.Fatalf("ReadRuntimeState: %v", readErr)
+	}
+	if state.Claim == nil || state.Claim.ClaimedBy != "agent-old" {
+		t.Fatalf("claim changed despite rejected reclaim: %+v", state.Claim)
 	}
 }
 
