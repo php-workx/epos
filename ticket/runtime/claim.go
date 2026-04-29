@@ -51,6 +51,11 @@ func ReadRuntimeState(dir, ticketID string) (*ticket.RuntimeState, error) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("parse runtime state %q: %w", ticketID, err)
 	}
+	if state.TicketID == "" {
+		state.TicketID = ticketID
+	} else if state.TicketID != ticketID {
+		return nil, fmt.Errorf("runtime state %q stored with mismatched ticket_id %q", ticketID, state.TicketID)
+	}
 	return &state, nil
 }
 

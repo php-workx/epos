@@ -60,6 +60,15 @@ func TestMarshalTicketBasic(t *testing.T) {
 	}
 }
 
+func TestMarshalTicketRejectsNilTicket(t *testing.T) {
+	if _, err := markdown.MarshalTicket(nil); err == nil {
+		t.Fatal("MarshalTicket(nil) error = nil, want validation error")
+	}
+	if _, err := markdown.UpdateFrontmatter([]byte("---\n---\n"), nil); err == nil {
+		t.Fatal("UpdateFrontmatter(..., nil) error = nil, want validation error")
+	}
+}
+
 func TestMarshalTicketCanonicalOrdering(t *testing.T) {
 	tkt := &ticket.Ticket{
 		ID:      "ord-0001",
@@ -192,6 +201,87 @@ func TestUnmarshalTicketNoBody(t *testing.T) {
 	}
 	if tkt.Title != "Direct title" {
 		t.Errorf("Title: got %q, want %q", tkt.Title, "Direct title")
+	}
+}
+
+func TestUnmarshalTicketParsesBodyOnlySections(t *testing.T) {
+	input := `---
+id: body-only
+type: task
+status: open
+---
+# Body-only ticket
+
+This description only exists in the Markdown body.
+
+## Acceptance criteria
+
+- first criterion
+- second criterion
+
+## Validation
+
+` + "```bash" + `
+go test ./...
+go vet ./...
+` + "```" + `
+
+## Notes
+
+- existing note
+`
+
+	tkt, err := markdown.UnmarshalTicket([]byte(input))
+	if err != nil {
+		t.Fatalf("UnmarshalTicket error: %v", err)
+	}
+
+	if tkt.Title != "Body-only ticket" || !tkt.TitleDerived {
+		t.Fatalf("Title = %q derived=%v, want derived body title", tkt.Title, tkt.TitleDerived)
+	}
+	if got := tkt.Description; got != "This description only exists in the Markdown body." {
+		t.Fatalf("Description = %q", got)
+	}
+	if got := strings.Join(tkt.AcceptanceCriteria, "|"); got != "first criterion|second criterion" {
+		t.Fatalf("AcceptanceCriteria = %#v", tkt.AcceptanceCriteria)
+	}
+	if got := strings.Join(tkt.ValidationCommands, "|"); got != "go test ./...|go vet ./..." {
+		t.Fatalf("ValidationCommands = %#v", tkt.ValidationCommands)
+	}
+	if got := strings.Join(tkt.Notes, "|"); got != "existing note" {
+		t.Fatalf("Notes = %#v", tkt.Notes)
+	}
+	for _, key := range []string{"description", "acceptance_criteria", "validation_commands", "notes"} {
+		if !tkt.Present[key] {
+			t.Fatalf("Present[%q] = false, want true for body-derived field", key)
+		}
+	}
+}
+
+func TestUnmarshalTicketFrontmatterOverridesBodySections(t *testing.T) {
+	input := `---
+id: body-overrides
+title: YAML title
+description: YAML description
+acceptance_criteria:
+  - YAML criterion
+---
+Body description.
+
+## Acceptance criteria
+
+- body criterion
+`
+
+	tkt, err := markdown.UnmarshalTicket([]byte(input))
+	if err != nil {
+		t.Fatalf("UnmarshalTicket error: %v", err)
+	}
+	if tkt.Description != "YAML description" {
+		t.Fatalf("Description = %q, want YAML description", tkt.Description)
+	}
+	if got := strings.Join(tkt.AcceptanceCriteria, "|"); got != "YAML criterion" {
+		t.Fatalf("AcceptanceCriteria = %#v", tkt.AcceptanceCriteria)
 	}
 }
 
@@ -478,6 +568,25 @@ func TestUpdateFrontmatter(t *testing.T) {
 	}
 }
 
+func TestUpdateFrontmatterPreservesCRLFBody(t *testing.T) {
+	original := "---\r\nid: upd-crlf\r\ntitle: Original\r\ntype: task\r\nstatus: open\r\n---\r\nfirst\r\nsecond\r\n"
+
+	tkt, err := markdown.UnmarshalTicket([]byte(original))
+	if err != nil {
+		t.Fatalf("UnmarshalTicket: %v", err)
+	}
+	tkt.Status = ticket.StatusInProgress
+	tkt.Present["status"] = true
+
+	updated, err := markdown.UpdateFrontmatter([]byte(original), tkt)
+	if err != nil {
+		t.Fatalf("UpdateFrontmatter: %v", err)
+	}
+	if !strings.HasSuffix(string(updated), "first\r\nsecond\r\n") {
+		t.Fatalf("CRLF body not preserved verbatim:\n%q", string(updated))
+	}
+}
+
 // ─── splitFrontmatterBody (indirect test via UnmarshalTicket) ─────────────────
 
 func TestSplitFrontmatterBodyWithBody(t *testing.T) {
@@ -514,8 +623,11 @@ func TestSplitFrontmatterBodyEmptyFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UnmarshalTicket: %v", err)
 	}
-	if len(tkt.Present) != 0 {
-		t.Errorf("Present should be empty for empty frontmatter, got %v", tkt.Present)
+	if tkt.Description != "body only" {
+		t.Errorf("Description = %q, want body only", tkt.Description)
+	}
+	if !tkt.Present["description"] {
+		t.Errorf("Present should include body-derived description, got %v", tkt.Present)
 	}
 }
 

@@ -56,6 +56,9 @@ func (b *nodeBuilder) add(key string, v interface{}) {
 //  3. TitleDerived suppression: when t.TitleDerived is true the "title" key is always
 //     omitted from the YAML, because the title lives in the Markdown body heading instead.
 func MarshalYAML(t *ticket.Ticket) (*yaml.Node, error) {
+	if t == nil {
+		return nil, &ticket.ValidationError{Field: "ticket", Message: "must not be nil"}
+	}
 	b := &nodeBuilder{
 		t:    t,
 		node: &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"},
@@ -214,6 +217,8 @@ func UnmarshalTicket(data []byte) (*ticket.Ticket, error) {
 			t.TitleDerived = true
 		}
 	}
+	sections := parseTicketBodySections(body)
+	mergeBodySections(t, &sections)
 
 	return t, nil
 }
@@ -263,41 +268,178 @@ func UpdateBody(existing []byte, transform func(string) string) []byte {
 // If the document does not start with "---\n" the entire content is returned as
 // the body and the frontmatter is empty.
 func splitFrontmatterBody(data []byte) (frontmatter, body string) {
-	content := strings.ReplaceAll(string(data), "\r\n", "\n")
-
-	if !strings.HasPrefix(content, "---\n") {
+	content := string(data)
+	openEnd, ok := openingDelimiterEnd(content)
+	if !ok {
 		return "", content
 	}
-
-	// The content after the opening "---\n".
-	rest := content[4:]
-
-	// Handle empty frontmatter: the opening "---\n" is immediately followed by the
-	// closing delimiter, with no frontmatter content in between.
-	if strings.HasPrefix(rest, "---\n") {
-		return "", rest[4:]
-	}
-	if rest == "---" {
+	if openEnd == len(content) {
 		return "", ""
 	}
 
-	// Look for the closing delimiter: a newline followed by "---" and another newline
-	// (or end of string).
-	const closingNL = "\n---\n"
-
-	if idx := strings.Index(rest, closingNL); idx != -1 {
-		// frontmatter content ends at idx; +1 keeps the trailing newline.
-		return rest[:idx+1], rest[idx+len(closingNL):]
+	for lineStart := openEnd; lineStart <= len(content); {
+		lineEnd := strings.IndexByte(content[lineStart:], '\n')
+		nextLineStart := len(content)
+		line := content[lineStart:]
+		if lineEnd != -1 {
+			nextLineStart = lineStart + lineEnd + 1
+			line = content[lineStart : lineStart+lineEnd]
+		}
+		if strings.TrimSuffix(line, "\r") == "---" {
+			return content[openEnd:lineStart], content[nextLineStart:]
+		}
+		if lineEnd == -1 {
+			break
+		}
+		lineStart = nextLineStart
 	}
 
-	// Handle "---" at very end of file with no trailing newline.
-	const closingEOF = "\n---"
-	if idx := strings.Index(rest, closingEOF); idx != -1 && idx+len(closingEOF) == len(rest) {
-		return rest[:idx+1], ""
+	return content[openEnd:], ""
+}
+
+func openingDelimiterEnd(content string) (int, bool) {
+	switch {
+	case strings.HasPrefix(content, "---\r\n"):
+		return len("---\r\n"), true
+	case strings.HasPrefix(content, "---\n"):
+		return len("---\n"), true
+	case content == "---":
+		return len(content), true
+	default:
+		return 0, false
+	}
+}
+
+type bodySections struct {
+	description        string
+	acceptanceCriteria []string
+	validationCommands []string
+	notes              []string
+}
+
+func parseTicketBodySections(body string) bodySections {
+	lines := strings.Split(normalizeLineEndings(body), "\n")
+	lines = trimLeadingTitle(lines)
+
+	firstSection := len(lines)
+	sections := make(map[string][]string)
+	for i := 0; i < len(lines); i++ {
+		heading, ok := sectionHeading(lines[i])
+		if !ok {
+			continue
+		}
+		if firstSection == len(lines) {
+			firstSection = i
+		}
+		start := i + 1
+		end := start
+		for end < len(lines) {
+			if _, ok := sectionHeading(lines[end]); ok {
+				break
+			}
+			end++
+		}
+		sections[heading] = lines[start:end]
+		i = end - 1
 	}
 
-	// No closing delimiter — treat everything as frontmatter.
-	return rest, ""
+	return bodySections{
+		description:        strings.TrimSpace(strings.Join(lines[:firstSection], "\n")),
+		acceptanceCriteria: parseBulletList(sections["acceptance_criteria"]),
+		validationCommands: parseValidationCommands(sections["validation"]),
+		notes:              parseBulletList(sections["notes"]),
+	}
+}
+
+func mergeBodySections(t *ticket.Ticket, sections *bodySections) {
+	if sections.description != "" && !t.Present["description"] {
+		t.Description = sections.description
+		t.Present["description"] = true
+	}
+	if len(sections.acceptanceCriteria) > 0 && !t.Present["acceptance_criteria"] {
+		t.AcceptanceCriteria = sections.acceptanceCriteria
+		t.Present["acceptance_criteria"] = true
+	}
+	if len(sections.validationCommands) > 0 && !t.Present["validation_commands"] {
+		t.ValidationCommands = sections.validationCommands
+		t.Present["validation_commands"] = true
+	}
+	if len(sections.notes) > 0 && !t.Present["notes"] {
+		t.Notes = sections.notes
+		t.Present["notes"] = true
+	}
+}
+
+func normalizeLineEndings(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.ReplaceAll(s, "\r", "\n")
+}
+
+func trimLeadingTitle(lines []string) []string {
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	if len(lines) == 0 || !strings.HasPrefix(lines[0], "# ") {
+		return lines
+	}
+	lines = lines[1:]
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	return lines
+}
+
+func sectionHeading(line string) (string, bool) {
+	if !strings.HasPrefix(line, "## ") {
+		return "", false
+	}
+	heading := strings.ToLower(strings.TrimSpace(line[3:]))
+	switch heading {
+	case "acceptance criteria", "acceptance criterion", "acceptance":
+		return "acceptance_criteria", true
+	case "validation", "validation commands":
+		return "validation", true
+	case "notes":
+		return "notes", true
+	default:
+		return heading, true
+	}
+}
+
+func parseBulletList(lines []string) []string {
+	var out []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			out = append(out, strings.TrimSpace(line[2:]))
+		}
+	}
+	return out
+}
+
+func parseValidationCommands(lines []string) []string {
+	var out []string
+	inFence := false
+	seenFence := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			seenFence = true
+			continue
+		}
+		if seenFence && !inFence {
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+			trimmed = strings.TrimSpace(trimmed[2:])
+		}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 // renderFrontmatterBody assembles a complete Markdown document from yamlBytes

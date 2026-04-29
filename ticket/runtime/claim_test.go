@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -65,6 +66,33 @@ func TestWriteRuntimeStateRejectsNilState(t *testing.T) {
 	requireValidationError(t, err)
 }
 
+func TestReadRuntimeStateBackfillsEmptyTicketID(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeRawRuntimeState(dir, "abc-empty", ticket.RuntimeState{Status: ticket.StatusPending}); err != nil {
+		t.Fatalf("writeRawRuntimeState: %v", err)
+	}
+
+	state, err := ReadRuntimeState(dir, "abc-empty")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.TicketID != "abc-empty" {
+		t.Fatalf("TicketID = %q, want canonical id", state.TicketID)
+	}
+}
+
+func TestReadRuntimeStateRejectsMismatchedTicketID(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeRawRuntimeState(dir, "abc-canonical", ticket.RuntimeState{TicketID: "abc-other"}); err != nil {
+		t.Fatalf("writeRawRuntimeState: %v", err)
+	}
+
+	_, err := ReadRuntimeState(dir, "abc-canonical")
+	if err == nil || !strings.Contains(err.Error(), "mismatched ticket_id") {
+		t.Fatalf("ReadRuntimeState error = %v, want mismatched ticket_id", err)
+	}
+}
+
 func TestWriteRuntimeStateConcurrentWriters(t *testing.T) {
 	dir := t.TempDir()
 
@@ -113,6 +141,18 @@ func TestWriteRuntimeStateConcurrentWriters(t *testing.T) {
 			t.Fatalf("leftover temp runtime sidecar: %s", entry.Name())
 		}
 	}
+}
+
+func writeRawRuntimeState(dir, ticketID string, state ticket.RuntimeState) error {
+	claimsDir := resolveClaimsDir(dir)
+	if err := os.MkdirAll(claimsDir, 0o750); err != nil {
+		return err
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(sidecarPath(dir, ticketID), data, 0o644)
 }
 
 // TestClaimConflict verifies that when two goroutines race to claim the same

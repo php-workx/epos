@@ -155,13 +155,15 @@ func (s *FileStore) Delete(id string) error {
 		return err
 	}
 	path := s.ticketPath(id)
-	if err := os.Remove(path); err != nil {
-		if os.IsNotExist(err) {
-			return &ticket.TicketNotFoundError{ID: id}
+	return withLock(path, func() error {
+		if err := os.Remove(path); err != nil {
+			if os.IsNotExist(err) {
+				return &ticket.TicketNotFoundError{ID: id}
+			}
+			return fmt.Errorf("delete ticket %q: %w", id, err)
 		}
-		return fmt.Errorf("delete ticket %q: %w", id, err)
-	}
-	return nil
+		return nil
+	})
 }
 
 // List returns all tickets in the store, sorted by ID.

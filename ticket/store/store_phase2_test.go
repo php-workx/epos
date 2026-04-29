@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/graph"
 	"github.com/php-workx/epos/ticket/store"
@@ -142,6 +144,39 @@ func TestAtomicWrite(t *testing.T) {
 	}
 	if got.Title != "atomic-updated" {
 		t.Errorf("title = %q, want %q", got.Title, "atomic-updated")
+	}
+}
+
+func TestDeleteUsesTicketFileLock(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	tk := testutil.MustCreateTestTicket(t, s, "locked delete")
+	path := filepath.Join(testutil.TicketsDir(s.Dir), tk.ID+".md")
+
+	lock := flock.New(path + ".lock")
+	if err := lock.Lock(); err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.Delete(tk.ID)
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("Delete completed while ticket lock was held: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := lock.Unlock(); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("Delete after unlock: %v", err)
+	}
+	if _, err := s.Read(tk.ID); !errors.As(err, new(*ticket.TicketNotFoundError)) {
+		t.Fatalf("Read after Delete: expected TicketNotFoundError, got %v", err)
 	}
 }
 
