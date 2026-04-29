@@ -79,6 +79,11 @@ func TestCreateRejectsCollision(t *testing.T) {
 	}
 }
 
+func TestCreateRejectsNilTicket(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	requireValidationError(t, s.Create(nil))
+}
+
 func TestCreateRejectsEmptyID(t *testing.T) {
 	s := testutil.NewTestStore(t)
 	tk := ticket.NewTicket(ticket.WithTitle("no id"))
@@ -203,6 +208,56 @@ func TestUpdatePreservesMarkdownBody(t *testing.T) {
 	}
 }
 
+func TestUpdateRegeneratesStructuredBodyWhenRichContentChanges(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	tk := ticket.NewTicket(
+		ticket.WithTitle("Refresh body"),
+		ticket.WithType("task"),
+		ticket.WithDescription("Old description."),
+		ticket.WithAcceptanceCriteria("old criterion"),
+		ticket.WithNotes("old note"),
+	)
+	tk.ID = store.GenerateID("epo")
+	tk.Present["id"] = true
+	tk.ValidationCommands = []string{"go test ./old"}
+	tk.Present["validation_commands"] = true
+	testutil.MustCreateTicket(t, s, tk)
+
+	tk.Description = "New description."
+	tk.AcceptanceCriteria = []string{"new criterion"}
+	tk.ValidationCommands = []string{"go test ./..."}
+	tk.Notes = []string{"new note"}
+	if err := s.Update(tk); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(s.Dir, store.TicketsDir, tk.ID+".md"))
+	if err != nil {
+		t.Fatalf("ReadFile after Update: %v", err)
+	}
+	body := string(data)
+	for _, want := range []string{
+		"New description.",
+		"- new criterion",
+		"go test ./...",
+		"- new note",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("updated body missing %q:\n%s", want, body)
+		}
+	}
+	for _, stale := range []string{
+		"Old description.",
+		"- old criterion",
+		"go test ./old",
+		"- old note",
+	} {
+		if strings.Contains(body, stale) {
+			t.Errorf("updated body retained stale content %q:\n%s", stale, body)
+		}
+	}
+}
+
 func TestUpdateStampsUpdatedAt(t *testing.T) {
 	s := testutil.NewTestStore(t)
 	tk := testutil.NewTestTicket("stamp test")
@@ -219,6 +274,11 @@ func TestUpdateStampsUpdatedAt(t *testing.T) {
 	if got.UpdatedAt == "" {
 		t.Error("Update should stamp updated_at on the ticket")
 	}
+}
+
+func TestUpdateRejectsNilTicket(t *testing.T) {
+	s := testutil.NewTestStore(t)
+	requireValidationError(t, s.Update(nil))
 }
 
 func TestUpdateNotFound(t *testing.T) {

@@ -3,6 +3,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +22,8 @@ const (
 	// TicketExt is the file extension for ticket markdown files.
 	TicketExt = ".md"
 )
+
+var atomicWriteFile = atomicWrite
 
 // FileStore provides CRUD operations for tickets stored as Markdown files
 // in a directory on the local filesystem. The expected layout is:
@@ -55,6 +58,9 @@ func (s *FileStore) graphLockPath() string {
 // Create writes a new ticket file. It returns *ticket.IDCollisionError if the
 // file already exists.
 func (s *FileStore) Create(t *ticket.Ticket) error {
+	if t == nil {
+		return &ticket.ValidationError{Field: "ticket", Message: "must not be nil"}
+	}
 	if err := ticket.ValidateID(t.ID); err != nil {
 		return err
 	}
@@ -89,7 +95,7 @@ func (s *FileStore) Create(t *ticket.Ticket) error {
 		if _, statErr := os.Stat(path); statErr == nil {
 			return &ticket.IDCollisionError{ID: t.ID}
 		}
-		return atomicWrite(path, data)
+		return atomicWriteFile(path, data)
 	})
 }
 
@@ -122,8 +128,12 @@ func (s *FileStore) Read(id string) (*ticket.Ticket, error) {
 	return t, nil
 }
 
-// Update writes the ticket file, preserving any existing Markdown body content.
+// Update writes the ticket file. It preserves the existing Markdown body unless
+// structured body fields changed, in which case it regenerates the body from t.
 func (s *FileStore) Update(t *ticket.Ticket) error {
+	if t == nil {
+		return &ticket.ValidationError{Field: "ticket", Message: "must not be nil"}
+	}
 	if err := ticket.ValidateID(t.ID); err != nil {
 		return err
 	}
@@ -139,13 +149,22 @@ func (s *FileStore) Update(t *ticket.Ticket) error {
 			}
 			return fmt.Errorf("read ticket %q: %w", t.ID, err)
 		}
+		previous, err := markdown.UnmarshalTicket(existing)
+		if err != nil {
+			return &ticket.CorruptYAMLError{Path: path, Cause: err}
+		}
 		t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		t.Present["updated_at"] = true
-		data, err := markdown.UpdateFrontmatter(existing, t)
+		var data []byte
+		if richContentChanged(previous, t) {
+			data, err = markdown.MarshalTicket(t)
+		} else {
+			data, err = markdown.UpdateFrontmatter(existing, t)
+		}
 		if err != nil {
 			return fmt.Errorf("update ticket %q: %w", t.ID, err)
 		}
-		return atomicWrite(path, data)
+		return atomicWriteFile(path, data)
 	})
 }
 
@@ -268,7 +287,7 @@ func (s *FileStore) AddNote(id, text string) error {
 		if uerr != nil {
 			return fmt.Errorf("update ticket %q notes: %w", fullID, uerr)
 		}
-		return atomicWrite(path, updated)
+		return atomicWriteFile(path, updated)
 	})
 }
 
@@ -405,36 +424,99 @@ func (s *FileStore) linkOp(id, targetID string, add bool) error {
 			ta.Links = removeFirst(ta.Links, fullB)
 			tb.Links = removeFirst(tb.Links, fullA)
 		}
-		markPresent(ta, "links")
-		markPresent(tb, "links")
-		if werr := s.writeFrontmatterUnderLock(pathA, ta); werr != nil {
-			return werr
-		}
-		return s.writeFrontmatterUnderLock(pathB, tb)
+		markLinksPresent(ta)
+		markLinksPresent(tb)
+		return s.writeFrontmattersUnderLock([]frontmatterWrite{
+			{path: pathA, ticket: ta},
+			{path: pathB, ticket: tb},
+		})
 	})
+}
+
+type frontmatterWrite struct {
+	path   string
+	ticket *ticket.Ticket
+}
+
+type preparedFrontmatterWrite struct {
+	path     string
+	ticketID string
+	original []byte
+	data     []byte
 }
 
 // writeFrontmatterUnderLock rewrites the ticket file at path with t's frontmatter,
 // preserving the existing Markdown body. The caller is responsible for holding
 // the file lock.
 func (s *FileStore) writeFrontmatterUnderLock(path string, t *ticket.Ticket) error {
+	return s.writeFrontmattersUnderLock([]frontmatterWrite{{path: path, ticket: t}})
+}
+
+// writeFrontmattersUnderLock prepares all frontmatter updates before committing
+// any file and restores prior contents if a later write fails. The caller is
+// responsible for holding all affected file locks.
+func (s *FileStore) writeFrontmattersUnderLock(writes []frontmatterWrite) error {
+	prepared := make([]preparedFrontmatterWrite, 0, len(writes))
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, write := range writes {
+		p, err := prepareFrontmatterWrite(write.path, write.ticket, now)
+		if err != nil {
+			return err
+		}
+		prepared = append(prepared, p)
+	}
+
+	var committed []preparedFrontmatterWrite
+	for _, write := range prepared {
+		if err := atomicWriteFile(write.path, write.data); err != nil {
+			restoreErr := restoreCommittedWrites(committed)
+			if restoreErr != nil {
+				return fmt.Errorf("write ticket %q after partial commit: %w; rollback failed: %v", write.ticketID, err, restoreErr)
+			}
+			return fmt.Errorf("write ticket %q: %w", write.ticketID, err)
+		}
+		committed = append(committed, write)
+	}
+	return nil
+}
+
+func prepareFrontmatterWrite(path string, t *ticket.Ticket, updatedAt string) (preparedFrontmatterWrite, error) {
+	if t == nil {
+		return preparedFrontmatterWrite{}, &ticket.ValidationError{Field: "ticket", Message: "must not be nil"}
+	}
 	existing, err := os.ReadFile(path) //nolint:gosec // G304: path uses a resolved or validated ticket ID
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &ticket.TicketNotFoundError{ID: t.ID}
+			return preparedFrontmatterWrite{}, &ticket.TicketNotFoundError{ID: t.ID}
 		}
-		return fmt.Errorf("read ticket %q: %w", t.ID, err)
+		return preparedFrontmatterWrite{}, fmt.Errorf("read ticket %q: %w", t.ID, err)
 	}
-	t.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	t.UpdatedAt = updatedAt
 	if t.Present == nil {
 		t.Present = make(map[string]bool)
 	}
 	t.Present["updated_at"] = true
 	data, err := markdown.UpdateFrontmatter(existing, t)
 	if err != nil {
-		return fmt.Errorf("update ticket %q: %w", t.ID, err)
+		return preparedFrontmatterWrite{}, fmt.Errorf("update ticket %q: %w", t.ID, err)
 	}
-	return atomicWrite(path, data)
+	return preparedFrontmatterWrite{
+		path:     path,
+		ticketID: t.ID,
+		original: existing,
+		data:     data,
+	}, nil
+}
+
+func restoreCommittedWrites(writes []preparedFrontmatterWrite) error {
+	var restoreErr error
+	for i := len(writes) - 1; i >= 0; i-- {
+		write := writes[i]
+		if err := atomicWriteFile(write.path, write.original); err != nil {
+			restoreErr = errors.Join(restoreErr, fmt.Errorf("restore ticket %q: %w", write.ticketID, err))
+		}
+	}
+	return restoreErr
 }
 
 func appendUnique(slice []string, v string) []string {
@@ -455,11 +537,30 @@ func removeFirst(slice []string, v string) []string {
 	return slice
 }
 
-func markPresent(t *ticket.Ticket, key string) {
+func markLinksPresent(t *ticket.Ticket) {
 	if t.Present == nil {
 		t.Present = make(map[string]bool)
 	}
-	t.Present[key] = true
+	t.Present["links"] = true
+}
+
+func richContentChanged(a, b *ticket.Ticket) bool {
+	return a.Description != b.Description ||
+		!stringSlicesEqual(a.AcceptanceCriteria, b.AcceptanceCriteria) ||
+		!stringSlicesEqual(a.ValidationCommands, b.ValidationCommands) ||
+		!stringSlicesEqual(a.Notes, b.Notes)
+}
+
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ListAllChildren returns all tickets whose Parent field equals parentID.

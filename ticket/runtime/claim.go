@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gofrs/flock"
@@ -142,6 +143,13 @@ func validateClaimIdentifier(ticketID, ownerID string) error {
 	return nil
 }
 
+func validateRunID(runID string) error {
+	if runID == "" {
+		return &ticket.ValidationError{Field: "run_id", Message: "must not be empty"}
+	}
+	return nil
+}
+
 // eligibilityCheck returns nil when status permits a new claim (empty, pending,
 // or repair_pending) and an error for all other statuses.
 func validateClaimEligibility(status ticket.Status) error {
@@ -192,6 +200,9 @@ func withExclusiveLock(dir, ticketID string, fn func(*ticket.RuntimeState) (*tic
 //   - If the ticket is claimed by a different owner an *ticket.AlreadyClaimedError is returned.
 func Claim(dir, ticketID, ownerID, runID string, duration time.Duration) error {
 	if err := validateClaimIdentifier(ticketID, ownerID); err != nil {
+		return err
+	}
+	if err := validateRunID(runID); err != nil {
 		return err
 	}
 	return withExclusiveLock(dir, ticketID, func(state *ticket.RuntimeState) (*ticket.RuntimeState, error) {
@@ -299,6 +310,9 @@ func ReclaimExpired(dir, ticketID, ownerID, runID string, duration time.Duration
 	if err := validateClaimIdentifier(ticketID, ownerID); err != nil {
 		return err
 	}
+	if err := validateRunID(runID); err != nil {
+		return err
+	}
 	return withExclusiveLock(dir, ticketID, func(state *ticket.RuntimeState) (*ticket.RuntimeState, error) {
 		// Block reclaim if a different owner holds a valid (non-expired) lease.
 		if state.Claim != nil && state.Claim.ClaimedBy != ownerID {
@@ -341,19 +355,25 @@ func ReadClaimsForRun(dir, runID string) ([]*ticket.RuntimeState, error) {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ticket.ClaimsSuffix {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(claimsDir, entry.Name())) //nolint:gosec // G304: entry.Name() is a directory entry, cannot contain path separators
+		ticketID := strings.TrimSuffix(entry.Name(), ticket.ClaimsSuffix)
+		state, err := ReadRuntimeState(dir, ticketID)
 		if err != nil {
+			if isSkippableClaimSidecarError(err) {
+				continue
+			}
 			return nil, fmt.Errorf("read claim file %q: %w", entry.Name(), err)
 		}
-		var state ticket.RuntimeState
-		if err := json.Unmarshal(data, &state); err != nil {
-			continue // skip corrupt sidecars
-		}
 		if state.Claim != nil && state.Claim.ClaimBackend == runID {
-			results = append(results, &state)
+			results = append(results, state)
 		}
 	}
 	return results, nil
+}
+
+func isSkippableClaimSidecarError(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "parse runtime state") ||
+		strings.Contains(msg, "mismatched ticket_id")
 }
 
 // ClaimAllowsReady reports whether the ticket may be transitioned to ready/pending

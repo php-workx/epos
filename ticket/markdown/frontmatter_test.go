@@ -587,6 +587,30 @@ func TestUpdateFrontmatterPreservesCRLFBody(t *testing.T) {
 	}
 }
 
+func TestUpdateBodyPreservesFrontmatterDelimiters(t *testing.T) {
+	original := "---\r\nid: upd-body\r\ntitle: Original\r\n---\r\nold body\r\n"
+
+	updated := markdown.UpdateBody([]byte(original), func(string) string {
+		return "new body\r\n"
+	})
+
+	if got, want := string(updated), "---\r\nid: upd-body\r\ntitle: Original\r\n---\r\nnew body\r\n"; got != want {
+		t.Fatalf("UpdateBody did not preserve delimiters:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestUpdateBodyPreservesEmptyFrontmatter(t *testing.T) {
+	original := "---\r\n---\r\nold body\r\n"
+
+	updated := markdown.UpdateBody([]byte(original), func(string) string {
+		return "new body\r\n"
+	})
+
+	if got, want := string(updated), "---\r\n---\r\nnew body\r\n"; got != want {
+		t.Fatalf("UpdateBody empty frontmatter:\ngot  %q\nwant %q", got, want)
+	}
+}
+
 // ─── splitFrontmatterBody (indirect test via UnmarshalTicket) ─────────────────
 
 func TestSplitFrontmatterBodyWithBody(t *testing.T) {
@@ -765,5 +789,53 @@ func TestDescriptionAndNotesEmittedInYAML(t *testing.T) {
 	}
 	if !strings.Contains(fm, "- note a") {
 		t.Errorf("notes not in frontmatter:\n%s", fm)
+	}
+}
+
+func TestUnmarshalTicketIgnoresHeadingsInsideFencedCode(t *testing.T) {
+	input := `---
+id: fence-headings
+type: task
+status: open
+---
+Description before validation.
+
+## Validation
+
+` + "```bash" + `
+echo before
+## Notes
+echo after
+` + "```" + `
+
+## Notes
+
+- real note
+`
+
+	tkt, err := markdown.UnmarshalTicket([]byte(input))
+	if err != nil {
+		t.Fatalf("UnmarshalTicket: %v", err)
+	}
+	if got := strings.Join(tkt.ValidationCommands, "|"); got != "echo before|## Notes|echo after" {
+		t.Fatalf("ValidationCommands = %#v", tkt.ValidationCommands)
+	}
+	if got := strings.Join(tkt.Notes, "|"); got != "real note" {
+		t.Fatalf("Notes = %#v", tkt.Notes)
+	}
+}
+
+func TestUnmarshalTicketIgnoresHeadingsInsideTildeFence(t *testing.T) {
+	input := "---\nid: tilde-fence\ntype: task\nstatus: open\n---\n## Validation\n\n~~~sh\necho before\n## Notes\necho after\n~~~\n\n## Notes\n\n- real note\n"
+
+	tkt, err := markdown.UnmarshalTicket([]byte(input))
+	if err != nil {
+		t.Fatalf("UnmarshalTicket: %v", err)
+	}
+	if got := strings.Join(tkt.ValidationCommands, "|"); got != "echo before|## Notes|echo after" {
+		t.Fatalf("ValidationCommands = %#v", tkt.ValidationCommands)
+	}
+	if got := strings.Join(tkt.Notes, "|"); got != "real note" {
+		t.Fatalf("Notes = %#v", tkt.Notes)
 	}
 }

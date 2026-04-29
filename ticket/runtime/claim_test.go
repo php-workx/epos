@@ -161,15 +161,22 @@ func TestClaimConflict(t *testing.T) {
 	dir := t.TempDir()
 
 	var wg sync.WaitGroup
+	var ready sync.WaitGroup
+	start := make(chan struct{})
 	errs := make([]error, 2)
 	for i := 0; i < 2; i++ {
 		wg.Add(1)
+		ready.Add(1)
 		go func(idx int) {
 			defer wg.Done()
+			ready.Done()
+			<-start
 			ownerID := fmt.Sprintf("agent-%d", idx+1)
 			errs[idx] = Claim(dir, "abc-1234", ownerID, "local", DefaultLeaseDuration)
 		}(i)
 	}
+	ready.Wait()
+	close(start)
 	wg.Wait()
 
 	nilCount := 0
@@ -186,6 +193,11 @@ func TestClaimConflict(t *testing.T) {
 	if nilCount != 1 {
 		t.Errorf("expected exactly 1 successful claim, got %d (errors: %v, %v)", nilCount, errs[0], errs[1])
 	}
+}
+
+func TestClaimRejectsEmptyRunID(t *testing.T) {
+	err := Claim(t.TempDir(), "abc-run", "agent-1", "", DefaultLeaseDuration)
+	requireValidationError(t, err)
 }
 
 // TestClaimEligibility verifies that Claim enforces ticket status eligibility.
@@ -435,6 +447,54 @@ func TestReadClaimsForRun(t *testing.T) {
 	}
 }
 
+func TestReadClaimsForRunBackfillsEmptyTicketID(t *testing.T) {
+	dir := t.TempDir()
+	state := ticket.RuntimeState{
+		Claim: &ticket.Claim{
+			ClaimedBy:    "agent-1",
+			ClaimBackend: "run-x",
+			ClaimedAt:    time.Now(),
+		},
+	}
+	if err := writeRawRuntimeState(dir, "ticket-empty-id", state); err != nil {
+		t.Fatalf("writeRawRuntimeState: %v", err)
+	}
+
+	results, err := ReadClaimsForRun(dir, "run-x")
+	if err != nil {
+		t.Fatalf("ReadClaimsForRun: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].TicketID != "ticket-empty-id" {
+		t.Fatalf("TicketID = %q, want canonical filename id", results[0].TicketID)
+	}
+}
+
+func TestReadClaimsForRunSkipsMismatchedTicketID(t *testing.T) {
+	dir := t.TempDir()
+	state := ticket.RuntimeState{
+		TicketID: "ticket-other",
+		Claim: &ticket.Claim{
+			ClaimedBy:    "agent-1",
+			ClaimBackend: "run-x",
+			ClaimedAt:    time.Now(),
+		},
+	}
+	if err := writeRawRuntimeState(dir, "ticket-canonical", state); err != nil {
+		t.Fatalf("writeRawRuntimeState: %v", err)
+	}
+
+	results, err := ReadClaimsForRun(dir, "run-x")
+	if err != nil {
+		t.Fatalf("ReadClaimsForRun: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("len(results) = %d, want 0", len(results))
+	}
+}
+
 // TestReadClaimsForRunEmpty verifies that an empty or nonexistent claims directory
 // returns nil without error.
 func TestReadClaimsForRunEmpty(t *testing.T) {
@@ -483,6 +543,11 @@ func TestReclaimExpired(t *testing.T) {
 	if state.Claim.ClaimedBy != "agent-new" {
 		t.Errorf("ClaimedBy = %q, want %q", state.Claim.ClaimedBy, "agent-new")
 	}
+}
+
+func TestReclaimExpiredRejectsEmptyRunID(t *testing.T) {
+	err := ReclaimExpired(t.TempDir(), "abc-run", "agent-1", "", DefaultLeaseDuration)
+	requireValidationError(t, err)
 }
 
 // TestReclaimExpiredBlockedOnValidLease verifies that ReclaimExpired returns

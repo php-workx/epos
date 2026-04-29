@@ -246,13 +246,13 @@ func UpdateFrontmatter(existing []byte, t *ticket.Ticket) ([]byte, error) {
 // The YAML frontmatter is preserved verbatim. If existing has no frontmatter,
 // the entire content is treated as body.
 func UpdateBody(existing []byte, transform func(string) string) []byte {
-	fm, body := splitFrontmatterBody(existing)
-	newBody := transform(body)
+	doc := splitFrontmatterDocument(existing)
+	newBody := transform(doc.body)
 	var buf bytes.Buffer
-	if fm != "" {
-		buf.WriteString("---\n")
-		buf.WriteString(fm)
-		buf.WriteString("---\n")
+	if doc.hasFrontmatter {
+		buf.WriteString(doc.opening)
+		buf.WriteString(doc.frontmatter)
+		buf.WriteString(doc.closing)
 	}
 	buf.WriteString(newBody)
 	return buf.Bytes()
@@ -263,18 +263,31 @@ func UpdateBody(existing []byte, transform func(string) string) []byte {
 // splitFrontmatterBody splits a Markdown document into its YAML frontmatter and
 // body. Frontmatter must be delimited by "---" on its own line at the start and
 // end of the block. The returned frontmatter string includes a trailing newline;
-// the body string is everything after the closing "---\n" delimiter (may be empty).
+// the body string is everything after the closing delimiter (may be empty).
 //
-// If the document does not start with "---\n" the entire content is returned as
+// If the document does not start with a YAML delimiter the entire content is returned as
 // the body and the frontmatter is empty.
 func splitFrontmatterBody(data []byte) (frontmatter, body string) {
+	doc := splitFrontmatterDocument(data)
+	return doc.frontmatter, doc.body
+}
+
+type frontmatterDocument struct {
+	hasFrontmatter bool
+	opening        string
+	frontmatter    string
+	closing        string
+	body           string
+}
+
+func splitFrontmatterDocument(data []byte) frontmatterDocument {
 	content := string(data)
 	openEnd, ok := openingDelimiterEnd(content)
 	if !ok {
-		return "", content
+		return frontmatterDocument{body: content}
 	}
 	if openEnd == len(content) {
-		return "", ""
+		return frontmatterDocument{hasFrontmatter: true, opening: content}
 	}
 
 	for lineStart := openEnd; lineStart <= len(content); {
@@ -286,7 +299,13 @@ func splitFrontmatterBody(data []byte) (frontmatter, body string) {
 			line = content[lineStart : lineStart+lineEnd]
 		}
 		if strings.TrimSuffix(line, "\r") == "---" {
-			return content[openEnd:lineStart], content[nextLineStart:]
+			return frontmatterDocument{
+				hasFrontmatter: true,
+				opening:        content[:openEnd],
+				frontmatter:    content[openEnd:lineStart],
+				closing:        content[lineStart:nextLineStart],
+				body:           content[nextLineStart:],
+			}
 		}
 		if lineEnd == -1 {
 			break
@@ -294,7 +313,11 @@ func splitFrontmatterBody(data []byte) (frontmatter, body string) {
 		lineStart = nextLineStart
 	}
 
-	return content[openEnd:], ""
+	return frontmatterDocument{
+		hasFrontmatter: true,
+		opening:        content[:openEnd],
+		frontmatter:    content[openEnd:],
+	}
 }
 
 func openingDelimiterEnd(content string) (int, bool) {
@@ -323,7 +346,11 @@ func parseTicketBodySections(body string) bodySections {
 
 	firstSection := len(lines)
 	sections := make(map[string][]string)
+	var fence markdownFence
 	for i := 0; i < len(lines); i++ {
+		if fence.update(lines[i]) || fence.inside {
+			continue
+		}
 		heading, ok := sectionHeading(lines[i])
 		if !ok {
 			continue
@@ -333,7 +360,12 @@ func parseTicketBodySections(body string) bodySections {
 		}
 		start := i + 1
 		end := start
+		var sectionFence markdownFence
 		for end < len(lines) {
+			if sectionFence.update(lines[end]) || sectionFence.inside {
+				end++
+				continue
+			}
 			if _, ok := sectionHeading(lines[end]); ok {
 				break
 			}
@@ -417,18 +449,64 @@ func parseBulletList(lines []string) []string {
 	return out
 }
 
+type markdownFence struct {
+	inside bool
+	marker byte
+	length int
+}
+
+func (f *markdownFence) update(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if len(trimmed) < 3 {
+		return false
+	}
+	if !f.inside {
+		if marker, n, ok := fenceStart(trimmed); ok {
+			f.inside = true
+			f.marker = marker
+			f.length = n
+			return true
+		}
+		return false
+	}
+	if fenceMarkerLength(trimmed, f.marker) >= f.length {
+		f.inside = false
+		f.marker = 0
+		f.length = 0
+		return true
+	}
+	return false
+}
+
+func fenceStart(line string) (byte, int, bool) {
+	if n := fenceMarkerLength(line, '`'); n >= 3 {
+		return '`', n, true
+	}
+	if n := fenceMarkerLength(line, '~'); n >= 3 {
+		return '~', n, true
+	}
+	return 0, 0, false
+}
+
+func fenceMarkerLength(line string, marker byte) int {
+	count := 0
+	for count < len(line) && line[count] == marker {
+		count++
+	}
+	return count
+}
+
 func parseValidationCommands(lines []string) []string {
 	var out []string
-	inFence := false
 	seenFence := false
+	var fence markdownFence
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
+		if fence.update(line) {
 			seenFence = true
 			continue
 		}
-		if seenFence && !inFence {
+		if seenFence && !fence.inside {
 			continue
 		}
 		if trimmed == "" {
