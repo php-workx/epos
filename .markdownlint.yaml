@@ -1,0 +1,11 @@
+# Markdownlint configuration for epos
+#
+# MD013 (line-length) is disabled: IMPLEMENTATION_PLAN.md contains wide
+# tables and long code examples that cannot be reflowed without loss of
+# readability.
+#
+# MD060 (table-column-style) is disabled: the compact pipe-table style used
+# throughout the plan documents is intentional and matches the wider toolchain.
+
+MD013: false
+MD060: false
