@@ -263,12 +263,13 @@ func TestSameOwnerReclaim(t *testing.T) {
 		t.Fatalf("ReadRuntimeState: %v", err)
 	}
 	origExpiry := first.Lease.ExpiresAt
+	origHeartbeat := first.Heartbeat.LastBeat
 
 	// Ensure time advances before the second claim.
 	time.Sleep(10 * time.Millisecond)
 
 	// Second claim by same owner with a longer duration: must succeed.
-	if err := Claim(dir, "abc-1234", "agent-1", "local", 30*time.Minute); err != nil {
+	if err := Claim(dir, "abc-1234", "agent-1", "run-new", 30*time.Minute); err != nil {
 		t.Fatalf("second Claim (same owner): %v", err)
 	}
 
@@ -282,8 +283,29 @@ func TestSameOwnerReclaim(t *testing.T) {
 	if second.Claim.ClaimedBy != "agent-1" {
 		t.Errorf("ClaimedBy = %q, want %q", second.Claim.ClaimedBy, "agent-1")
 	}
+	if second.Claim.ClaimBackend != "run-new" {
+		t.Errorf("ClaimBackend = %q, want %q", second.Claim.ClaimBackend, "run-new")
+	}
 	if !second.Lease.ExpiresAt.After(origExpiry) {
 		t.Errorf("expected extended expiry: before=%v, after=%v", origExpiry, second.Lease.ExpiresAt)
+	}
+	if second.Heartbeat == nil || !second.Heartbeat.LastBeat.After(origHeartbeat) {
+		t.Errorf("expected heartbeat to refresh on same-owner reclaim: before=%v, after=%+v", origHeartbeat, second.Heartbeat)
+	}
+
+	oldRunClaims, err := ReadClaimsForRun(dir, "run-old")
+	if err != nil {
+		t.Fatalf("ReadClaimsForRun old run: %v", err)
+	}
+	if len(oldRunClaims) != 0 {
+		t.Fatalf("old run still sees claim after same-owner reclaim: %+v", oldRunClaims)
+	}
+	newRunClaims, err := ReadClaimsForRun(dir, "run-new")
+	if err != nil {
+		t.Fatalf("ReadClaimsForRun new run: %v", err)
+	}
+	if len(newRunClaims) != 1 || newRunClaims[0].TicketID != "abc-1234" {
+		t.Fatalf("new run claims = %+v, want abc-1234", newRunClaims)
 	}
 }
 

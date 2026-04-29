@@ -208,15 +208,17 @@ func Claim(dir, ticketID, ownerID, runID string, duration time.Duration) error {
 	return withExclusiveLock(dir, ticketID, func(state *ticket.RuntimeState) (*ticket.RuntimeState, error) {
 		// Same-owner reclaim: idempotent — extend the lease without re-checking eligibility.
 		if state.Claim != nil && state.Claim.ClaimedBy == ownerID {
-			leaseID := fmt.Sprintf("%s-%d", ticketID, time.Now().UnixNano())
+			now := time.Now()
+			leaseID := fmt.Sprintf("%s-%d", ticketID, now.UnixNano())
 			if state.Lease != nil && state.Lease.LeaseID != "" {
 				leaseID = state.Lease.LeaseID
 			}
 			state.Claim.ClaimBackend = runID
 			state.Lease = &ticket.Lease{
 				LeaseID:   leaseID,
-				ExpiresAt: time.Now().Add(duration),
+				ExpiresAt: now.Add(duration),
 			}
+			state.Heartbeat = &ticket.Heartbeat{LastBeat: now}
 			return state, nil
 		}
 
