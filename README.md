@@ -11,8 +11,8 @@ Provided as a CLI and Golang package.
 ```text
 ┌──────────────────────────────────────────────────────────────┐
 │                        CLI (cmd/epos)                        │
-│  new · show · claim · release · close · reopen · ready ·    │
-│  blocked · validate · lint · export · status                 │
+│  new · edit · show · claim · release · close · reopen ·     │
+│  ready · blocked · validate · lint · export · tui            │
 └─────────────────────┬────────────────────────────────────────┘
                       │
           ┌───────────┴───────────┐
@@ -166,6 +166,26 @@ epos export --json
 epos export epo-parent-id --json
 ```
 
+### Interactive TUI
+
+```bash
+# Open the grouped ticket operator UI
+epos tui
+
+# Limit the view to children of a parent ticket
+epos tui epo-parent-id
+
+# Set the owner used by claim/release actions
+epos tui --owner agent-1
+
+# Change polling refresh interval; 0 disables polling
+epos tui --refresh 10s
+```
+
+The TUI shows grouped ticket lists (`ready`, `blocked`, `claimed`, `open`, `closed`, `all`) with a detail pane. Use `j`/`k` or arrows to move, `tab`/`shift+tab` to switch groups, `/` to search, `r` to refresh, `enter` for detail, `n` to add a note, `c`/`u` to claim/release, `x`/`o` to close/reopen, and `q` to quit.
+
+For claim/release actions, `--owner` wins over `EPOS_OWNER`, then `USER`, then `USERNAME`. `epos tui` is interactive and rejects the global `--json` flag.
+
 ### Claim and release
 
 ```bash
@@ -200,7 +220,7 @@ epos lint
 
 ```bash
 --dir string   Directory containing the .tickets folder (default ".")
---json         Output in JSON format
+--json         Output in JSON format for supported commands; rejected by epos tui
 ```
 
 ### Exit codes
