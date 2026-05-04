@@ -1,0 +1,7 @@
+interface:
+  display_name: "epos"
+  short_description: "Create, query, claim, and close tickets via the epos CLI. Never edit .tickets/ files directly."
+  default_prompt: "Use $epos for all ticket operations — create, query, claim, and close tickets via the epos CLI."
+
+policy:
+  allow_implicit_invocation: true
