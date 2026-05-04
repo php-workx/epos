@@ -40,9 +40,32 @@ cp -R "$SRC_SKILL" "$DEST_CODEX_TMP" || {
   exit 1
 }
 
-rm -rf "$DEST_CLAUDE" "$DEST_CODEX"
-mv "$DEST_CLAUDE_TMP" "$DEST_CLAUDE"
-mv "$DEST_CODEX_TMP" "$DEST_CODEX"
+# Atomic swap with rollback: back up existing destinations so a partial
+# mv failure can be recovered.
+DEST_CLAUDE_BAK="${DEST_CLAUDE}.bak"
+DEST_CODEX_BAK="${DEST_CODEX}.bak"
+rm -rf "$DEST_CLAUDE_BAK" "$DEST_CODEX_BAK"
+
+# Rename existing → .bak (ok if they don't exist — mv fails silently)
+mv "$DEST_CLAUDE" "$DEST_CLAUDE_BAK" 2>/dev/null || true
+mv "$DEST_CODEX" "$DEST_CODEX_BAK" 2>/dev/null || true
+
+# Move each tmp into place; on failure, restore from .bak
+mv "$DEST_CLAUDE_TMP" "$DEST_CLAUDE" || {
+  echo "error: failed to install Claude skill; restoring backup" >&2
+  mv "$DEST_CLAUDE_BAK" "$DEST_CLAUDE" 2>/dev/null || true
+  mv "$DEST_CODEX_BAK" "$DEST_CODEX" 2>/dev/null || true
+  exit 1
+}
+mv "$DEST_CODEX_TMP" "$DEST_CODEX" || {
+  echo "error: failed to install Codex skill; restoring backup" >&2
+  mv "$DEST_CODEX_BAK" "$DEST_CODEX" 2>/dev/null || true
+  # Claude install is already live at this point — keep it
+  exit 1
+}
+
+# Clean up backups on success
+rm -rf "$DEST_CLAUDE_BAK" "$DEST_CODEX_BAK"
 
 cat <<EOF
 Installed $SKILL_NAME:

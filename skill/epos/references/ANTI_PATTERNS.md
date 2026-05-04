@@ -134,7 +134,7 @@ echo "$result" | jq '.tickets'  # null = clean, array = errors
 
 **DON'T:** Assume ticket state from memory.
 
-```
+```text
 # WRONG — state may have changed since you last looked
 "I know epo-xxx is still open and has no deps"
 ```

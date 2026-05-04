@@ -113,7 +113,7 @@ epos close epo-d4f7 -r "Fixed token validation; added expiry check middleware"
 
 ## The `--json` Flag
 
-Always prefer `--json` for machine parsing. Every command supports it as a global flag:
+Always prefer `--json` for machine parsing. Supported by all non-interactive CLI commands (skill command surface); not accepted by interactive commands such as `epos tui`.
 
 ```bash
 epos show epo-d4f7 --json     # Structured output for scripts
