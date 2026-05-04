@@ -40,11 +40,10 @@ Provided as a CLI and Golang package.
 
 ```text
 <repo-root>/
-├── .tickets/
-│   ├── <ticket-id>.md          # Ticket with YAML frontmatter + body
-│   └── .claims/
-│       └── <ticket-id>.json    # Sidecar runtime state (claim, lease, heartbeat)
-└── cmd/epos/                   # CLI binary
+└── .tickets/
+    ├── <ticket-id>.md          # Ticket with YAML frontmatter + body
+    └── .claims/
+        └── <ticket-id>.json    # Sidecar runtime state (claim, lease, heartbeat)
 ```
 
 **Key design decisions:**
