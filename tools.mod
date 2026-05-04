@@ -7,6 +7,7 @@ go 1.26.2
 // tools.mod with the application's runtime dependencies.
 ignore (
 	./cmd
+	./internal
 	./ticket
 )
 

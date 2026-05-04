@@ -29,6 +29,8 @@ github.com/php-workx/epos/
 ├── cmd/
 │   └── epos/                    # CLI binary
 │       └── main.go
+├── internal/
+│   └── tui/                     # Bubble Tea ticket operator UI
 ├── ticket/
 │   ├── tickets.go               # Core types: Ticket, Status, NewTicket, TicketOption
 │   ├── runtime.go               # Runtime types: Claim, Lease, Heartbeat, RuntimeState
@@ -252,7 +254,13 @@ Implement `FileStore` (CRUD, atomic writes, file locking). Implement dependency 
 
 ### Phase 3: CLI MVP
 
-Implement `epos` CLI with: `new`, `edit`, `show`, `validate`, `lint`, `ready`, `blocked`, `claim`, `release`, `close`, `reopen`, `export`. Machine-readable JSON output for every command.
+Implement `epos` CLI with: `new`, `edit`, `show`, `validate`, `lint`, `ready`, `blocked`, `claim`, `release`, `close`, `reopen`, `export`, and `tui`. Machine-readable JSON output for non-interactive commands; `tui` is interactive and rejects `--json`.
+
+#### TUI command contract
+
+`epos tui [parent]` opens the Bubble Tea ticket operator UI. The optional `parent` limits the view to children of that ticket. `--owner` sets the owner used by claim/release actions; when omitted, owner resolution checks `EPOS_OWNER`, then `USER`, then `USERNAME`. `--refresh` accepts a Go duration, defaults to `5s`, and `0` disables polling.
+
+The TUI presents a grouped two-pane view: ticket groups (`ready`, `blocked`, `claimed`, `open`, `closed`, `all`) on the left and selected-ticket detail on the right. Key actions: `j`/`k` or arrows move selection, `tab`/`shift+tab` switch groups, `/` searches, `r` refreshes, `enter` opens detail, `n` adds a note, `c`/`u` claim/release, `x`/`o` close/reopen, `esc` cancels the active mode, and `q`/`ctrl+c` quits. The TUI has no JSON output mode.
 
 ### Phase 4: `fabrikk` integration
 
