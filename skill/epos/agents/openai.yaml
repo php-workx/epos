@@ -1,3 +1,6 @@
+# OpenAI Codex agent manifest. Consumed by the install script when copying
+# this skill into ~/.codex/skills/epos so Codex can surface it alongside the
+# Claude Code installation. Not read by Claude Code itself.
 interface:
   display_name: "epos"
   short_description: "Create, query, claim, and close tickets via the epos CLI. Never edit .tickets/ files directly."

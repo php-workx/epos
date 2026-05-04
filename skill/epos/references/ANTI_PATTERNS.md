@@ -158,7 +158,7 @@ Tickets are your persistent memory across compactions.
 
 ---
 
-## Documentation Gaps
+## Environment Constraints
 
 ### 9. Assuming `tui` is available agent-side
 
