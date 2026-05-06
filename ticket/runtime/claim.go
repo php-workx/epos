@@ -11,7 +11,22 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/php-workx/epos/ticket"
+	"github.com/php-workx/epos/ticket/internal/safepath"
 )
+
+// assertSidecarContained checks that the resolved sidecar path and its lock
+// file both resolve under the claims directory. It guards against symlink
+// escapes in the surrounding directory tree even when the ticket ID itself
+// passed validateRuntimeTicketID. Defense in depth — every public entry
+// point that names a sidecar runs this check before any I/O.
+func assertSidecarContained(dir, ticketID string) error {
+	base := resolveClaimsDir(dir)
+	sp := sidecarPath(dir, ticketID)
+	if err := safepath.AssertUnderIntendedBase(sp, base); err != nil {
+		return err
+	}
+	return safepath.AssertUnderIntendedBase(flockPath(sp), base)
+}
 
 // The default lease duration is 15 minutes; re-exported from the ticket package
 // so callers that import only the runtime subpackage can reference it directly.
@@ -90,6 +105,9 @@ func ReadRuntimeState(dir, ticketID string) (*ticket.RuntimeState, error) {
 	if err := validateRuntimeTicketID(ticketID); err != nil {
 		return nil, err
 	}
+	if err := assertSidecarContained(dir, ticketID); err != nil {
+		return nil, err
+	}
 	path := sidecarPath(dir, ticketID)
 	data, err := os.ReadFile(path) //nolint:gosec // G304 G703: path uses a validated ticket ID
 	if errors.Is(err, os.ErrNotExist) {
@@ -118,6 +136,9 @@ func WriteRuntimeState(dir string, state *ticket.RuntimeState) error {
 		return &ticket.ValidationError{Field: "state", Message: "must not be nil"}
 	}
 	if err := validateRuntimeTicketID(state.TicketID); err != nil {
+		return err
+	}
+	if err := assertSidecarContained(dir, state.TicketID); err != nil {
 		return err
 	}
 	claimsDir := resolveClaimsDir(dir)
@@ -215,6 +236,9 @@ func validateClaimEligibility(status ticket.Status) error {
 // The claims directory is created if it does not exist.
 func withExclusiveLock(dir, ticketID string, fn func(*ticket.RuntimeState) (*ticket.RuntimeState, error)) error {
 	if err := validateRuntimeTicketID(ticketID); err != nil {
+		return err
+	}
+	if err := assertSidecarContained(dir, ticketID); err != nil {
 		return err
 	}
 	claimsDir := resolveClaimsDir(dir)
