@@ -366,6 +366,41 @@ func TestCustomErrorTypes(t *testing.T) {
 	})
 }
 
+// TestCLIReadyExcludesActivelyClaimedTickets verifies the user-facing
+// behavior of the sidecar-aware ready filter: an actively claimed ticket
+// disappears from "epos ready" output but reappears with --include-claimed.
+func TestCLIReadyExcludesActivelyClaimedTickets(t *testing.T) {
+	dir := t.TempDir()
+
+	stdout, _, exitCode := epos(t, dir, "new", "Will be claimed", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	if _, _, exitCode = epos(t, dir, "claim", id, "--owner", "agent-1"); exitCode != 0 {
+		t.Fatalf("claim: exit %d", exitCode)
+	}
+
+	// Default behaviour: claimed ticket must not appear in ready output.
+	stdout, _, exitCode = epos(t, dir, "ready")
+	if exitCode != 0 {
+		t.Fatalf("ready: exit %d: %s", exitCode, stdout)
+	}
+	if strings.Contains(stdout, id) {
+		t.Errorf("ready: claimed ticket %q leaked into output:\n%s", id, stdout)
+	}
+
+	// Escape hatch: --include-claimed surfaces it again for debugging.
+	stdout, _, exitCode = epos(t, dir, "ready", "--include-claimed")
+	if exitCode != 0 {
+		t.Fatalf("ready --include-claimed: exit %d: %s", exitCode, stdout)
+	}
+	if !strings.Contains(stdout, id) {
+		t.Errorf("ready --include-claimed: expected claimed ticket %q in output:\n%s", id, stdout)
+	}
+}
+
 // TestCLIReadyAndBlocked tests the ready and blocked filters with dependencies.
 func TestCLIReadyAndBlocked(t *testing.T) {
 	dir := t.TempDir()

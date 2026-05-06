@@ -41,7 +41,7 @@ epos show "$id" --json
 epos claim "$id" -o "$AGENT_ID" || echo "already claimed — pick another"
 ```
 
-`ready` does not consult sidecars, so a listed ticket may already be claimed by another agent. Always *attempt* the claim and skip on failure.
+`ready` filters out tickets with active claim sidecars (since epos v0.2.0). A small race window remains between listing and claiming, so always *attempt* the claim and skip on failure. Pass `--include-claimed` to disable the filter when debugging.
 
 ## Creating an Epic with Children {#epic-with-children}
 

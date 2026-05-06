@@ -86,7 +86,20 @@ func sortByPriorityThenID(tickets []ticket.Ticket) {
 //   - No parent ticket in all is blocked by open dependencies.
 //
 // The result is sorted by priority descending, then ID ascending.
+//
+// ReadyFilter is sidecar-blind: tickets with an active claim still appear here.
+// Use ReadyFilterUnclaimed when callers need to honour claim state.
 func ReadyFilter(all []ticket.Ticket) []ticket.Ticket {
+	return ReadyFilterUnclaimed(all, nil)
+}
+
+// ReadyFilterUnclaimed returns ready tickets with an additional claim filter.
+// When isClaimed returns true for a ticket ID, that ticket is excluded from
+// the result. Pass nil to disable claim filtering (equivalent to ReadyFilter).
+//
+// This is the function the CLI's "epos ready" command should call so that
+// concurrently claimed tickets do not surface to other agents.
+func ReadyFilterUnclaimed(all []ticket.Ticket, isClaimed func(string) bool) []ticket.Ticket {
 	byID := indexByID(all)
 	var result []ticket.Ticket
 	for i := range all {
@@ -97,6 +110,9 @@ func ReadyFilter(all []ticket.Ticket) []ticket.Ticket {
 			continue
 		}
 		if parentBlocksWork(&all[i], byID) {
+			continue
+		}
+		if isClaimed != nil && isClaimed(all[i].ID) {
 			continue
 		}
 		result = append(result, all[i])

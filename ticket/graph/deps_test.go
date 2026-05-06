@@ -130,6 +130,37 @@ func TestReadySortOrder(t *testing.T) {
 	assertOrder(t, "ReadyFilter", got, want)
 }
 
+// TestReadyFilterUnclaimedExcludesClaimedTickets confirms that the new
+// claim-aware filter drops tickets reported as claimed by isClaimed and
+// keeps everything else in the existing ReadyFilter behavior.
+func TestReadyFilterUnclaimedExcludesClaimedTickets(t *testing.T) {
+	t.Parallel()
+	tickets := []ticket.Ticket{
+		mk("t1", ticket.StatusPending, 5, nil, ""),
+		mk("t2", ticket.StatusPending, 3, nil, ""),
+		mk("t3", ticket.StatusPending, 1, nil, ""),
+	}
+	claimed := map[string]bool{"t2": true}
+	got := graph.ReadyFilterUnclaimed(tickets, func(id string) bool { return claimed[id] })
+	want := []string{"t1", "t3"}
+	assertOrder(t, "ReadyFilterUnclaimed claimed", got, want)
+}
+
+// TestReadyFilterUnclaimedNilCallbackMatchesReadyFilter pins down the
+// equivalence: a nil callback must be indistinguishable from the legacy
+// ReadyFilter that does not consult sidecars.
+func TestReadyFilterUnclaimedNilCallbackMatchesReadyFilter(t *testing.T) {
+	t.Parallel()
+	tickets := []ticket.Ticket{
+		mk("a", ticket.StatusPending, 5, nil, ""),
+		mk("b", ticket.StatusOpen, 3, nil, ""),
+	}
+	got := graph.ReadyFilterUnclaimed(tickets, nil)
+	if len(got) != 2 {
+		t.Fatalf("ReadyFilterUnclaimed(nil): expected 2 tickets, got %v", ids(got))
+	}
+}
+
 // TestReadyEmpty: empty input returns nil/empty.
 func TestReadyEmpty(t *testing.T) {
 	t.Parallel()

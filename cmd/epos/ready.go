@@ -9,6 +9,10 @@ import (
 )
 
 // readyCmd lists tickets that are ready to be worked.
+//
+// Tickets with an active (non-expired) claim sidecar are excluded so that
+// concurrent agents do not race on the same ticket. Use --include-claimed
+// to disable that filter when debugging.
 var readyCmd = &cobra.Command{
 	Use:   "ready [parent]",
 	Short: "List tickets ready to be worked",
@@ -19,9 +23,13 @@ var readyCmd = &cobra.Command{
 			return err
 		}
 
-		tickets, err := s.List()
-		if err != nil {
-			return err
+		var isClaimed func(string) bool
+		if !readyIncludeClaimed {
+			claimed, cerr := s.ActiveClaimSet()
+			if cerr != nil {
+				return cerr
+			}
+			isClaimed = func(id string) bool { return claimed[id] }
 		}
 
 		if len(args) > 0 && args[0] != "" {
@@ -30,7 +38,11 @@ var readyCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			children := graph.FilterReadyChildren(tickets, parentID, nil)
+			tickets, err := s.List()
+			if err != nil {
+				return err
+			}
+			children := graph.FilterReadyChildren(tickets, parentID, isClaimed)
 			if jsonFlag {
 				return outputJSON(cmd, children)
 			}
@@ -40,7 +52,11 @@ var readyCmd = &cobra.Command{
 			return nil
 		}
 
-		ready := graph.ReadyFilter(tickets)
+		tickets, err := s.List()
+		if err != nil {
+			return err
+		}
+		ready := graph.ReadyFilterUnclaimed(tickets, isClaimed)
 		if jsonFlag {
 			return outputJSON(cmd, ready)
 		}
@@ -50,6 +66,8 @@ var readyCmd = &cobra.Command{
 		return nil
 	},
 }
+
+var readyIncludeClaimed bool
 
 // blockedCmd lists tickets that are blocked by open dependencies.
 var blockedCmd = &cobra.Command{
@@ -94,6 +112,8 @@ var blockedCmd = &cobra.Command{
 }
 
 func init() {
+	readyCmd.Flags().BoolVar(&readyIncludeClaimed, "include-claimed", false,
+		"include tickets with an active claim sidecar (default: filtered out)")
 	rootCmd.AddCommand(readyCmd)
 	rootCmd.AddCommand(blockedCmd)
 }
