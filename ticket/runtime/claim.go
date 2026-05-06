@@ -17,6 +17,56 @@ import (
 // so callers that import only the runtime subpackage can reference it directly.
 const DefaultLeaseDuration = ticket.DefaultLeaseDuration
 
+// ClaimOption configures Claim, Renew, and ReclaimExpired.
+type ClaimOption func(*claimOptions)
+
+type claimOptions struct {
+	leaseID string
+}
+
+// WithLeaseID sets an explicit lease identifier on the claim or renewal.
+// When unset (or empty), the runtime generates one in the form
+// "<ticketID>-<unix-nanos>". Caller-supplied IDs let consumers (such as verk)
+// embed run-scoped fence values they validate later via their own checks.
+//
+// The supplied ID must be non-empty; whitespace-only values are rejected
+// alongside other invalid identifiers via validateLeaseID.
+func WithLeaseID(id string) ClaimOption {
+	return func(o *claimOptions) { o.leaseID = id }
+}
+
+func resolveClaimOptions(opts []ClaimOption) (*claimOptions, error) {
+	o := &claimOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+	if err := validateLeaseID(o.leaseID); err != nil {
+		return nil, err
+	}
+	return o, nil
+}
+
+// validateLeaseID guards caller-supplied lease identifiers.
+// Empty is allowed (signals "generate one"); non-empty must be a sane string
+// without path separators or control characters so it can safely round-trip
+// through filenames or audit logs.
+func validateLeaseID(id string) error {
+	if id == "" {
+		return nil
+	}
+	if strings.TrimSpace(id) == "" {
+		return &ticket.ValidationError{Field: "lease_id", Message: "must not be whitespace"}
+	}
+	if strings.ContainsAny(id, "/\\\x00") {
+		return &ticket.ValidationError{Field: "lease_id", Message: "must not contain path separators or null bytes"}
+	}
+	return nil
+}
+
+func generatedLeaseID(ticketID string, now time.Time) string {
+	return fmt.Sprintf("%s-%d", ticketID, now.UnixNano())
+}
+
 // resolveClaimsDir returns the absolute path of the .claims directory within
 // the ticket store rooted at dir. dir is expected to be the repository root
 // that contains the .tickets/ subdirectory.
@@ -198,20 +248,34 @@ func withExclusiveLock(dir, ticketID string, fn func(*ticket.RuntimeState) (*tic
 //   - Ticket sidecar status must be empty (treated as pending), pending, or repair_pending.
 //   - If the ticket is already claimed by ownerID the call is idempotent and extends the lease.
 //   - If the ticket is claimed by a different owner an *ticket.AlreadyClaimedError is returned.
-func Claim(dir, ticketID, ownerID, runID string, duration time.Duration) error {
+//
+// Optional ClaimOption values let callers override defaults. Use WithLeaseID
+// to supply an explicit lease identifier; otherwise one is generated.
+func Claim(dir, ticketID, ownerID, runID string, duration time.Duration, opts ...ClaimOption) error {
 	if err := validateClaimIdentifier(ticketID, ownerID); err != nil {
 		return err
 	}
 	if err := validateRunID(runID); err != nil {
 		return err
 	}
+	o, err := resolveClaimOptions(opts)
+	if err != nil {
+		return err
+	}
 	return withExclusiveLock(dir, ticketID, func(state *ticket.RuntimeState) (*ticket.RuntimeState, error) {
 		// Same-owner reclaim: idempotent — extend the lease without re-checking eligibility.
 		if state.Claim != nil && state.Claim.ClaimedBy == ownerID {
 			now := time.Now()
-			leaseID := fmt.Sprintf("%s-%d", ticketID, now.UnixNano())
-			if state.Lease != nil && state.Lease.LeaseID != "" {
-				leaseID = state.Lease.LeaseID
+			// Caller-supplied LeaseID wins; otherwise preserve the existing lease ID
+			// so heartbeats keep the same fence; only fall back to a fresh ID when
+			// neither source is available.
+			leaseID := o.leaseID
+			if leaseID == "" {
+				if state.Lease != nil && state.Lease.LeaseID != "" {
+					leaseID = state.Lease.LeaseID
+				} else {
+					leaseID = generatedLeaseID(ticketID, now)
+				}
 			}
 			state.Claim.ClaimBackend = runID
 			state.Lease = &ticket.Lease{
@@ -233,13 +297,17 @@ func Claim(dir, ticketID, ownerID, runID string, duration time.Duration) error {
 		}
 
 		now := time.Now()
+		leaseID := o.leaseID
+		if leaseID == "" {
+			leaseID = generatedLeaseID(ticketID, now)
+		}
 		state.Claim = &ticket.Claim{
 			ClaimedBy:    ownerID,
 			ClaimBackend: runID,
 			ClaimedAt:    now,
 		}
 		state.Lease = &ticket.Lease{
-			LeaseID:   fmt.Sprintf("%s-%d", ticketID, now.UnixNano()),
+			LeaseID:   leaseID,
 			ExpiresAt: now.Add(duration),
 		}
 		state.Heartbeat = &ticket.Heartbeat{LastBeat: now}
@@ -276,8 +344,16 @@ func Release(dir, ticketID, ownerID string, newStatus ticket.Status, reason stri
 }
 
 // Renew extends the lease on ticketID held by ownerID by extension duration from now.
-func Renew(dir, ticketID, ownerID string, extension time.Duration) error {
+//
+// Optional ClaimOption values let callers rotate the lease identifier on
+// renewal via WithLeaseID; otherwise the existing lease ID is preserved (or a
+// fresh one minted if none was set).
+func Renew(dir, ticketID, ownerID string, extension time.Duration, opts ...ClaimOption) error {
 	if err := validateClaimIdentifier(ticketID, ownerID); err != nil {
+		return err
+	}
+	o, err := resolveClaimOptions(opts)
+	if err != nil {
 		return err
 	}
 	return withExclusiveLock(dir, ticketID, func(state *ticket.RuntimeState) (*ticket.RuntimeState, error) {
@@ -292,13 +368,19 @@ func Renew(dir, ticketID, ownerID string, extension time.Duration) error {
 			}
 		}
 		now := time.Now()
-		if state.Lease == nil {
-			state.Lease = &ticket.Lease{
-				LeaseID:   fmt.Sprintf("%s-renewed-%d", ticketID, now.UnixNano()),
-				ExpiresAt: now.Add(extension),
-			}
-		} else {
-			state.Lease.ExpiresAt = now.Add(extension)
+		// Resolution order: caller-supplied → existing → freshly minted.
+		leaseID := o.leaseID
+		switch {
+		case leaseID != "":
+			// caller-supplied wins
+		case state.Lease != nil && state.Lease.LeaseID != "":
+			leaseID = state.Lease.LeaseID
+		default:
+			leaseID = fmt.Sprintf("%s-renewed-%d", ticketID, now.UnixNano())
+		}
+		state.Lease = &ticket.Lease{
+			LeaseID:   leaseID,
+			ExpiresAt: now.Add(extension),
 		}
 		state.Heartbeat = &ticket.Heartbeat{LastBeat: now}
 		return state, nil
@@ -308,11 +390,18 @@ func Renew(dir, ticketID, ownerID string, extension time.Duration) error {
 // ReclaimExpired transfers ownership of ticketID to ownerID/runID if the current
 // lease has expired or is absent. Returns *ticket.AlreadyClaimedError if a
 // different owner holds a lease that is still valid.
-func ReclaimExpired(dir, ticketID, ownerID, runID string, duration time.Duration) error {
+//
+// Optional ClaimOption values let callers supply the new lease identifier via
+// WithLeaseID; otherwise one is generated.
+func ReclaimExpired(dir, ticketID, ownerID, runID string, duration time.Duration, opts ...ClaimOption) error {
 	if err := validateClaimIdentifier(ticketID, ownerID); err != nil {
 		return err
 	}
 	if err := validateRunID(runID); err != nil {
+		return err
+	}
+	o, err := resolveClaimOptions(opts)
+	if err != nil {
 		return err
 	}
 	return withExclusiveLock(dir, ticketID, func(state *ticket.RuntimeState) (*ticket.RuntimeState, error) {
@@ -326,13 +415,17 @@ func ReclaimExpired(dir, ticketID, ownerID, runID string, duration time.Duration
 			return nil, err
 		}
 		now := time.Now()
+		leaseID := o.leaseID
+		if leaseID == "" {
+			leaseID = generatedLeaseID(ticketID, now)
+		}
 		state.Claim = &ticket.Claim{
 			ClaimedBy:    ownerID,
 			ClaimBackend: runID,
 			ClaimedAt:    now,
 		}
 		state.Lease = &ticket.Lease{
-			LeaseID:   fmt.Sprintf("%s-%d", ticketID, now.UnixNano()),
+			LeaseID:   leaseID,
 			ExpiresAt: now.Add(duration),
 		}
 		state.Heartbeat = &ticket.Heartbeat{LastBeat: now}

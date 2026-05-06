@@ -712,6 +712,156 @@ func TestReleaseNotClaimed(t *testing.T) {
 	}
 }
 
+// TestClaimWithLeaseIDOverridesGenerated verifies that WithLeaseID lets callers
+// supply an explicit lease identifier on a fresh claim instead of accepting the
+// runtime-generated default.
+func TestClaimWithLeaseIDOverridesGenerated(t *testing.T) {
+	dir := t.TempDir()
+	custom := "lease-run-1-abc-1234-42"
+
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID(custom)); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+
+	state, err := ReadRuntimeState(dir, "abc-1234")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.Lease == nil || state.Lease.LeaseID != custom {
+		t.Fatalf("Lease.LeaseID = %+v, want %q", state.Lease, custom)
+	}
+}
+
+// TestClaimWithLeaseIDOverridesOnSameOwnerReclaim verifies that a second claim
+// by the same owner can rotate the lease ID when the caller supplies a new one.
+func TestClaimWithLeaseIDOverridesOnSameOwnerReclaim(t *testing.T) {
+	dir := t.TempDir()
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID("lease-A")); err != nil {
+		t.Fatalf("first Claim: %v", err)
+	}
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID("lease-B")); err != nil {
+		t.Fatalf("reclaim: %v", err)
+	}
+	state, err := ReadRuntimeState(dir, "abc-1234")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.Lease == nil || state.Lease.LeaseID != "lease-B" {
+		t.Fatalf("Lease.LeaseID = %+v, want %q", state.Lease, "lease-B")
+	}
+}
+
+// TestClaimSameOwnerReclaimWithoutOptionPreservesLeaseID confirms the existing
+// behavior: when no WithLeaseID is supplied on reclaim, the existing lease ID
+// is preserved (unchanged from prior versions of the API).
+func TestClaimSameOwnerReclaimWithoutOptionPreservesLeaseID(t *testing.T) {
+	dir := t.TempDir()
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID("lease-stable")); err != nil {
+		t.Fatalf("first Claim: %v", err)
+	}
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration); err != nil {
+		t.Fatalf("reclaim without option: %v", err)
+	}
+	state, err := ReadRuntimeState(dir, "abc-1234")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.Lease == nil || state.Lease.LeaseID != "lease-stable" {
+		t.Fatalf("Lease.LeaseID = %+v, want preserved %q", state.Lease, "lease-stable")
+	}
+}
+
+// TestRenewWithLeaseIDRotates verifies that Renew accepts WithLeaseID to
+// rotate the lease fence on heartbeat without requiring a full release.
+func TestRenewWithLeaseIDRotates(t *testing.T) {
+	dir := t.TempDir()
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID("lease-orig")); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if err := Renew(dir, "abc-1234", "agent-1", DefaultLeaseDuration, WithLeaseID("lease-rotated")); err != nil {
+		t.Fatalf("Renew: %v", err)
+	}
+	state, err := ReadRuntimeState(dir, "abc-1234")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.Lease == nil || state.Lease.LeaseID != "lease-rotated" {
+		t.Fatalf("Lease.LeaseID = %+v, want %q", state.Lease, "lease-rotated")
+	}
+}
+
+// TestRenewWithoutOptionPreservesExistingLeaseID confirms back-compat for the
+// existing 4-arg Renew callers.
+func TestRenewWithoutOptionPreservesExistingLeaseID(t *testing.T) {
+	dir := t.TempDir()
+	if err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID("lease-keep")); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	if err := Renew(dir, "abc-1234", "agent-1", DefaultLeaseDuration); err != nil {
+		t.Fatalf("Renew: %v", err)
+	}
+	state, err := ReadRuntimeState(dir, "abc-1234")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.Lease == nil || state.Lease.LeaseID != "lease-keep" {
+		t.Fatalf("Lease.LeaseID = %+v, want preserved %q", state.Lease, "lease-keep")
+	}
+}
+
+// TestReclaimExpiredWithLeaseIDOverridesGenerated verifies that the option
+// flows through ReclaimExpired the same way it does through Claim.
+func TestReclaimExpiredWithLeaseIDOverridesGenerated(t *testing.T) {
+	dir := t.TempDir()
+	expired := &ticket.RuntimeState{
+		TicketID: "abc-exp",
+		Claim: &ticket.Claim{
+			ClaimedBy:    "agent-old",
+			ClaimBackend: "run-old",
+			ClaimedAt:    time.Now().Add(-2 * time.Hour),
+		},
+		Lease: &ticket.Lease{
+			LeaseID:   "lease-old",
+			ExpiresAt: time.Now().Add(-time.Hour),
+		},
+	}
+	if err := WriteRuntimeState(dir, expired); err != nil {
+		t.Fatalf("WriteRuntimeState: %v", err)
+	}
+
+	if err := ReclaimExpired(dir, "abc-exp", "agent-new", "run-new", DefaultLeaseDuration, WithLeaseID("lease-new")); err != nil {
+		t.Fatalf("ReclaimExpired: %v", err)
+	}
+	state, err := ReadRuntimeState(dir, "abc-exp")
+	if err != nil {
+		t.Fatalf("ReadRuntimeState: %v", err)
+	}
+	if state.Lease == nil || state.Lease.LeaseID != "lease-new" {
+		t.Fatalf("Lease.LeaseID = %+v, want %q", state.Lease, "lease-new")
+	}
+}
+
+// TestWithLeaseIDRejectsInvalidValues verifies validation guards on the
+// caller-supplied lease identifier across all three entry points.
+func TestWithLeaseIDRejectsInvalidValues(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name string
+		id   string
+	}{
+		{"whitespace only", "   "},
+		{"contains slash", "lease/with/slash"},
+		{"contains backslash", "lease\\with\\back"},
+		{"contains null byte", "lease\x00null"},
+	}
+	for _, tc := range cases {
+		t.Run("Claim "+tc.name, func(t *testing.T) {
+			err := Claim(dir, "abc-1234", "agent-1", "run-1", DefaultLeaseDuration, WithLeaseID(tc.id))
+			requireValidationError(t, err)
+		})
+	}
+}
+
 func requireValidationError(t *testing.T, err error) {
 	t.Helper()
 	var validation *ticket.ValidationError
