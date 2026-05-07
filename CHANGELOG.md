@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 - 2026-05-08
+
+### Fixes
+- Check out the requested tag when manually rerunning release workflows.
+
 ## 0.2.2 - 2026-05-08
 
 ### Fixes
