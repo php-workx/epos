@@ -58,6 +58,7 @@ release:
     owner: php-workx
     name: epos
   prerelease: auto
+  replace_existing_artifacts: true
 
 homebrew_casks:
   - name: epos
