@@ -130,6 +130,23 @@ func TestCreateTicketWithGeneratedIDRetriesCollisions(t *testing.T) {
 	}
 }
 
+func TestVersionStringIncludesBuildMetadata(t *testing.T) {
+	oldVersion, oldCommit, oldBuildDate := version, gitCommit, buildDate
+	t.Cleanup(func() {
+		version, gitCommit, buildDate = oldVersion, oldCommit, oldBuildDate
+	})
+
+	version = "v1.2.3"
+	gitCommit = "abc1234"
+	buildDate = "2026-05-08T00:00:00Z"
+
+	got := versionString()
+	want := "v1.2.3 (commit abc1234, built 2026-05-08T00:00:00Z)"
+	if got != want {
+		t.Fatalf("versionString() = %q, want %q", got, want)
+	}
+}
+
 // TestCLIFullWorkflow exercises the full end-to-end workflow:
 //
 //	create → ready → blocked → claim → release → close → export

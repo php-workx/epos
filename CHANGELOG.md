@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 - 2026-05-08
+
+### Fixes
+- Add release packaging for GitHub artifacts and Homebrew cask installation.
+- Wire CLI version metadata into release builds.
+
+### Documentation
+- Document Homebrew and Go install commands.
+
 ## 0.2.0 - 2026-05-08
 
 ### Features

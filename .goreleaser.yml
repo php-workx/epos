@@ -1,0 +1,83 @@
+version: 2
+
+project_name: epos
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: epos
+    main: ./cmd/epos
+    binary: epos
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.gitCommit={{ .ShortCommit }}
+      - -X main.buildDate={{ .Date }}
+
+archives:
+  - id: epos
+    ids:
+      - epos
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^chore:"
+
+release:
+  github:
+    owner: php-workx
+    name: epos
+  prerelease: auto
+
+homebrew_casks:
+  - name: epos
+    repository:
+      owner: php-workx
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    ids:
+      - epos
+    binaries:
+      - epos
+    skip_upload: "{{ if index .Env \"TAP_GITHUB_TOKEN\" }}false{{ else }}true{{ end }}"
+    homepage: https://github.com/php-workx/epos
+    description: A task and issue tracker for AI agents and their humans
+    url:
+      verified: github.com/php-workx/epos
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/epos"]
+          end

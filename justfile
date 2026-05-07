@@ -7,7 +7,7 @@ go_tool := "go tool -modfile=tools.mod"
 version := `git describe --tags --always --dirty 2>/dev/null || echo "dev"`
 commit := `git rev-parse --short HEAD 2>/dev/null || echo "unknown"`
 build_date := `date -u +"%Y-%m-%dT%H:%M:%SZ"`
-ldflags := "-X github.com/php-workx/epos/cmd/epos/cli.Version=" + version + " -X github.com/php-workx/epos/cmd/epos/cli.GitCommit=" + commit + " -X github.com/php-workx/epos/cmd/epos/cli.BuildDate=" + build_date
+ldflags := "-X main.version=" + version + " -X main.gitCommit=" + commit + " -X main.buildDate=" + build_date
 
 default:
     @just --list

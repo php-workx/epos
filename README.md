@@ -66,8 +66,16 @@ Provided as a CLI and Golang package.
 
 ## Installation
 
+Install the latest release with Homebrew:
+
 ```bash
-go install ./cmd/epos
+brew install --cask php-workx/tap/epos
+```
+
+Or install from source with Go:
+
+```bash
+go install github.com/php-workx/epos/cmd/epos@latest
 ```
 
 ## Usage

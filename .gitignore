@@ -9,6 +9,6 @@
 
 # Go build artifacts
 /bin/
+/dist/
 /epos
 *.test
-
