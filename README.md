@@ -152,8 +152,11 @@ epos show epo-implement
 ### Query tickets
 
 ```bash
-# List tickets ready to work (no open dependencies)
+# List unclaimed tickets ready to work (no open dependencies)
 epos ready
+
+# Include tickets with active claim sidecars
+epos ready --include-claimed
 
 # List tickets blocked by open dependencies
 epos blocked
