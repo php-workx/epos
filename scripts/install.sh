@@ -98,7 +98,7 @@ install_epos() {
 
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap "rm -rf '$tmp'" EXIT
 
   log "Downloading ${archive}"
   download_file "${base_url}/${archive}" "${tmp}/${archive}"

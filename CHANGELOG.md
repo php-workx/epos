@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 - 2026-05-08
+
+### Fixes
+- Fix shell installer cleanup under `set -u`.
+- Remove the stale Homebrew cask when publishing the Formula.
+
 ## 0.2.4 - 2026-05-08
 
 ### Fixes

@@ -123,9 +123,11 @@ jobs:
           git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/php-workx/homebrew-tap.git"
           mkdir -p homebrew-tap/Formula
           cp /tmp/epos.rb homebrew-tap/Formula/epos.rb
+          rm -f homebrew-tap/Casks/epos.rb
           cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/epos.rb
+          git add -u Casks/epos.rb || true
           git commit -m "epos ${VERSION}" || exit 0
           git push
