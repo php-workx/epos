@@ -38,5 +38,94 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
           GORELEASER_CURRENT_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+  update-homebrew-formula:
+    name: Update Homebrew Formula
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          tag="${RELEASE_TAG}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate and push formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -n "${TAP_GITHUB_TOKEN}" || (echo "TAP_GITHUB_TOKEN is required" >&2; exit 1)
+
+          mkdir -p /tmp/epos-release
+          gh release download "${TAG}" --repo php-workx/epos --pattern checksums.txt --dir /tmp/epos-release
+          checksums="/tmp/epos-release/checksums.txt"
+
+          get_sha256() {
+            local artifact="$1"
+            local sha
+            sha=$(awk -v target="$artifact" '{ name=$2; sub(/^\*/, "", name); if (name == target) { print $1; exit } }' "$checksums")
+            test -n "$sha" || (echo "missing checksum for $artifact" >&2; exit 1)
+            echo "$sha"
+          }
+
+          darwin_arm64="epos_${VERSION}_darwin_arm64.tar.gz"
+          darwin_amd64="epos_${VERSION}_darwin_amd64.tar.gz"
+          linux_arm64="epos_${VERSION}_linux_arm64.tar.gz"
+          linux_amd64="epos_${VERSION}_linux_amd64.tar.gz"
+          base_url="https://github.com/php-workx/epos/releases/download/${TAG}"
+
+          cat > /tmp/epos.rb <<FORMULA
+          class Epos < Formula
+            desc "A task and issue tracker for AI agents and their humans"
+            homepage "https://github.com/php-workx/epos"
+            version "${VERSION}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${base_url}/${darwin_arm64}"
+                sha256 "$(get_sha256 "$darwin_arm64")"
+              else
+                url "${base_url}/${darwin_amd64}"
+                sha256 "$(get_sha256 "$darwin_amd64")"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "${base_url}/${linux_arm64}"
+                sha256 "$(get_sha256 "$linux_arm64")"
+              else
+                url "${base_url}/${linux_amd64}"
+                sha256 "$(get_sha256 "$linux_amd64")"
+              end
+            end
+
+            def install
+              bin.install "epos"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/epos --version")
+            end
+          end
+          FORMULA
+          sed -i 's/^          //' /tmp/epos.rb
+
+          cd /tmp
+          git clone "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/php-workx/homebrew-tap.git"
+          mkdir -p homebrew-tap/Formula
+          cp /tmp/epos.rb homebrew-tap/Formula/epos.rb
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/epos.rb
+          git commit -m "epos ${VERSION}" || exit 0
+          git push

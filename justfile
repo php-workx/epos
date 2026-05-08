@@ -15,7 +15,7 @@ default:
 # --- Quality gates ---
 
 # Pre-commit: fast local checks + fresh non-race tests
-pre-commit: format-check vet lint-check build-check mod-tidy-check actionlint betterleaks test-fast
+pre-commit: format-check vet lint-check build-check mod-tidy-check actionlint install-script-test betterleaks test-fast
 
 # Pre-push: pre-commit + race tests + vulnerability scan + semgrep
 pre-push: pre-commit test-race vuln semgrep
@@ -53,6 +53,15 @@ lint-check: tools-ready
 actionlint:
     @if [ -d .github/workflows ]; then \
         {{go_tool}} actionlint .github/workflows/*.yml; \
+    fi
+
+# Validate release installer helper scripts.
+install-script-test:
+    bash scripts/install_test.sh
+    @if command -v pwsh >/dev/null 2>&1; then \
+        pwsh -NoProfile -File install.ps1 -SelfTest; \
+    else \
+        echo "warning: pwsh not installed, skipping Windows installer self-test"; \
     fi
 
 # --- Security ---

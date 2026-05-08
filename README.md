@@ -69,7 +69,25 @@ Provided as a CLI and Golang package.
 Install the latest release with Homebrew:
 
 ```bash
-brew install --cask php-workx/tap/epos
+brew install php-workx/tap/epos
+```
+
+Install with Mise from GitHub Releases:
+
+```bash
+mise use --global github:php-workx/epos
+```
+
+Install with the shell script on macOS or Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/php-workx/epos/main/scripts/install.sh | bash
+```
+
+Install with PowerShell on Windows:
+
+```powershell
+irm https://raw.githubusercontent.com/php-workx/epos/main/install.ps1 | iex
 ```
 
 Or install from source with Go:

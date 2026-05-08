@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.4 - 2026-05-08
+
+### Fixes
+- Switch Homebrew distribution from cask to Formula.
+- Add macOS/Linux and Windows install scripts backed by GitHub Release archives.
+- Rename release archives with lower-case platform names for Mise and installer compatibility.
+
+### Documentation
+- Document Homebrew Formula, install script, PowerShell, Mise, and Go install paths.
+
 ## 0.2.3 - 2026-05-08
 
 ### Fixes
