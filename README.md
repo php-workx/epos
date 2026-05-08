@@ -123,13 +123,12 @@ Or via JSON stdin (useful for programmatic ticket creation):
 
 ```bash
 echo '{
-  "title": "JSON-created ticket",
   "type": "task",
   "body": "Created from stdin",
   "acceptance_criteria": ["criterion one", "criterion two"],
   "assignee": "agent-1",
   "tags": ["backend", "api"]
-}' | epos new --stdin
+}' | epos new "JSON-created ticket" --stdin
 ```
 
 **`epos new` flags:**
