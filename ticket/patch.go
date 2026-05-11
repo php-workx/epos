@@ -47,7 +47,9 @@ func (p *TicketPatch) SetTags(v []string)   { p.tags = v; p.mark("tags") }
 func (p *TicketPatch) SetIntent(v string)   { p.intent = v; p.mark("intent") }
 
 // Validate checks that all set fields contain valid values. Returns
-// *ValidationError on the first invalid field.
+// *ValidationError on the first invalid field. Fail-fast is deliberate: a patch
+// originates from a single user command where reporting the first problem is
+// sufficient.
 func (p *TicketPatch) Validate() error {
 	if p.Has("priority") && p.priority < 0 {
 		return &ValidationError{Field: "priority", Message: "must be >= 0"}
