@@ -1,5 +1,10 @@
 package ticket
 
+import (
+	"fmt"
+	"strings"
+)
+
 // TicketPatch describes a partial update to a Ticket. Only fields explicitly
 // set via a setter (or decoded from JSON) are applied; absent fields are left
 // unchanged when Apply is called.
@@ -40,6 +45,34 @@ func (p *TicketPatch) SetNotes(v []string)  { p.notes = v; p.mark("notes") }
 func (p *TicketPatch) SetAssignee(v string) { p.assignee = v; p.mark("assignee") }
 func (p *TicketPatch) SetTags(v []string)   { p.tags = v; p.mark("tags") }
 func (p *TicketPatch) SetIntent(v string)   { p.intent = v; p.mark("intent") }
+
+// Validate checks that all set fields contain valid values. Returns
+// *ValidationError on the first invalid field.
+func (p *TicketPatch) Validate() error {
+	if p.Has("priority") && p.priority < 0 {
+		return &ValidationError{Field: "priority", Message: "must be >= 0"}
+	}
+	if p.Has("tags") {
+		seen := make(map[string]bool, len(p.tags))
+		for i, tag := range p.tags {
+			if strings.TrimSpace(tag) == "" {
+				return &ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)}
+			}
+			if seen[tag] {
+				return &ValidationError{Field: "tags", Message: fmt.Sprintf("duplicate tag %q", tag)}
+			}
+			seen[tag] = true
+		}
+	}
+	if p.Has("acceptance_criteria") {
+		for i, ac := range p.acceptanceCriteria {
+			if strings.TrimSpace(ac) == "" {
+				return &ValidationError{Field: "acceptance_criteria", Message: fmt.Sprintf("item %d is empty", i)}
+			}
+		}
+	}
+	return nil
+}
 
 // Apply writes all set fields from the patch onto t, marking each field present
 // in t.Present. Unset fields are left unchanged.
