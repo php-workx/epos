@@ -254,6 +254,43 @@ func TestUnmarshalJSONPriorityNullIsNotSet(t *testing.T) {
 	}
 }
 
+func TestApplySlicesIsolatedFromCallerMutation(t *testing.T) {
+	// Mutating the caller's slice after Set but before Apply must not affect the
+	// patch internals or the ticket produced by Apply.
+	deps := []string{"epo-a-xxxx"}
+	tags := []string{"urgent"}
+	ac := []string{"criterion"}
+	notes := []string{"note"}
+
+	p := &ticket.TicketPatch{}
+	p.SetDeps(deps)
+	p.SetTags(tags)
+	p.SetAcceptanceCriteria(ac)
+	p.SetNotes(notes)
+
+	// Mutate originals after Set, before Apply.
+	deps[0] = "mutated"
+	tags[0] = "mutated"
+	ac[0] = "mutated"
+	notes[0] = "mutated"
+
+	tk := &ticket.Ticket{}
+	p.Apply(tk)
+
+	if len(tk.Deps) != 1 || tk.Deps[0] != "epo-a-xxxx" {
+		t.Errorf("Deps mutated by caller: got %v", tk.Deps)
+	}
+	if len(tk.Tags) != 1 || tk.Tags[0] != "urgent" {
+		t.Errorf("Tags mutated by caller: got %v", tk.Tags)
+	}
+	if len(tk.AcceptanceCriteria) != 1 || tk.AcceptanceCriteria[0] != "criterion" {
+		t.Errorf("AcceptanceCriteria mutated by caller: got %v", tk.AcceptanceCriteria)
+	}
+	if len(tk.Notes) != 1 || tk.Notes[0] != "note" {
+		t.Errorf("Notes mutated by caller: got %v", tk.Notes)
+	}
+}
+
 func TestUnmarshalJSONSecondPassError(t *testing.T) {
 	// Second unmarshal (into shadow struct) must fail when a known field has the
 	// wrong JSON type — e.g. priority sent as a string instead of a number.

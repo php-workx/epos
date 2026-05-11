@@ -36,15 +36,15 @@ func (p *TicketPatch) Has(field string) bool {
 
 func (p *TicketPatch) SetPriority(v int)       { p.priority = v; p.mark("priority") }
 func (p *TicketPatch) SetParent(v string)      { p.parent = v; p.mark("parent") }
-func (p *TicketPatch) SetDeps(v []string)      { p.deps = v; p.mark("deps") }
+func (p *TicketPatch) SetDeps(v []string)      { p.deps = append([]string(nil), v...); p.mark("deps") }
 func (p *TicketPatch) SetDescription(v string) { p.description = v; p.mark("description") }
 func (p *TicketPatch) SetAcceptanceCriteria(v []string) {
-	p.acceptanceCriteria = v
+	p.acceptanceCriteria = append([]string(nil), v...)
 	p.mark("acceptance_criteria")
 }
-func (p *TicketPatch) SetNotes(v []string)  { p.notes = v; p.mark("notes") }
+func (p *TicketPatch) SetNotes(v []string)  { p.notes = append([]string(nil), v...); p.mark("notes") }
 func (p *TicketPatch) SetAssignee(v string) { p.assignee = v; p.mark("assignee") }
-func (p *TicketPatch) SetTags(v []string)   { p.tags = v; p.mark("tags") }
+func (p *TicketPatch) SetTags(v []string)   { p.tags = append([]string(nil), v...); p.mark("tags") }
 func (p *TicketPatch) SetIntent(v string)   { p.intent = v; p.mark("intent") }
 
 // Validate checks that all set fields contain valid values. Returns
