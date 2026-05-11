@@ -58,6 +58,7 @@ func TestApplyAllNineFields(t *testing.T) {
 	tk := &ticket.Ticket{}
 	p.Apply(tk)
 
+	// Value assertions.
 	if tk.Priority != 3 {
 		t.Errorf("Priority: got %d, want 3", tk.Priority)
 	}
@@ -85,6 +86,13 @@ func TestApplyAllNineFields(t *testing.T) {
 	if tk.Intent != "deliver value" {
 		t.Errorf("Intent: got %q", tk.Intent)
 	}
+
+	// Present assertions — every set field must be marked present in the ticket.
+	for _, key := range []string{"priority", "parent", "deps", "description", "acceptance_criteria", "notes", "assignee", "tags", "intent"} {
+		if !tk.Present[key] {
+			t.Errorf("Present[%q] not set after Apply", key)
+		}
+	}
 }
 
 func TestValidatePriorityNegative(t *testing.T) {
@@ -110,24 +118,42 @@ func TestValidatePriorityZeroIsValid(t *testing.T) {
 func TestValidateTagEmpty(t *testing.T) {
 	p := &ticket.TicketPatch{}
 	p.SetTags([]string{""})
-	if err := p.Validate(); err == nil {
+	err := p.Validate()
+	if err == nil {
 		t.Fatal("expected ValidationError for empty tag, got nil")
+	}
+	if ve, ok := err.(*ticket.ValidationError); !ok {
+		t.Errorf("expected *ValidationError, got %T: %v", err, err)
+	} else if ve.Field != "tags" {
+		t.Errorf("ValidationError.Field: got %q, want %q", ve.Field, "tags")
 	}
 }
 
 func TestValidateTagDuplicate(t *testing.T) {
 	p := &ticket.TicketPatch{}
 	p.SetTags([]string{"urgent", "urgent"})
-	if err := p.Validate(); err == nil {
+	err := p.Validate()
+	if err == nil {
 		t.Fatal("expected ValidationError for duplicate tag, got nil")
+	}
+	if ve, ok := err.(*ticket.ValidationError); !ok {
+		t.Errorf("expected *ValidationError, got %T: %v", err, err)
+	} else if ve.Field != "tags" {
+		t.Errorf("ValidationError.Field: got %q, want %q", ve.Field, "tags")
 	}
 }
 
 func TestValidateACItemEmpty(t *testing.T) {
 	p := &ticket.TicketPatch{}
 	p.SetAcceptanceCriteria([]string{""})
-	if err := p.Validate(); err == nil {
+	err := p.Validate()
+	if err == nil {
 		t.Fatal("expected ValidationError for empty AC item, got nil")
+	}
+	if ve, ok := err.(*ticket.ValidationError); !ok {
+		t.Errorf("expected *ValidationError, got %T: %v", err, err)
+	} else if ve.Field != "acceptance_criteria" {
+		t.Errorf("ValidationError.Field: got %q, want %q", ve.Field, "acceptance_criteria")
 	}
 }
 

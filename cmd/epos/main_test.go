@@ -947,6 +947,31 @@ func TestCLIEditStdin(t *testing.T) {
 	}
 }
 
+func TestCLIEditStdinBodyKeyIsIgnored(t *testing.T) {
+	// edit --stdin uses "description", not "body". Sending "body" must be a no-op.
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "body key test", "--type", "task", "--body", "original description")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	input := `{"body": "should be ignored"}`
+	stdout2, exitCode2 := eposStdin(t, dir, input, "edit", id, "--stdin")
+	if exitCode2 != 0 {
+		t.Fatalf("edit --stdin: exit %d: %s", exitCode2, stdout2)
+	}
+
+	stdout3, _, _ := epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout3), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "original description" {
+		t.Errorf("edit --stdin with 'body' key mutated description: got %q, want %q", tk.Description, "original description")
+	}
+}
+
 func TestCLIEditStdinCanClearFields(t *testing.T) {
 	dir := t.TempDir()
 	stdout, _, exitCode := epos(t, dir, "new", "Clear via stdin",
