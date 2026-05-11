@@ -254,6 +254,15 @@ func TestUnmarshalJSONPriorityNullIsNotSet(t *testing.T) {
 	}
 }
 
+func TestUnmarshalJSONSecondPassError(t *testing.T) {
+	// Second unmarshal (into shadow struct) must fail when a known field has the
+	// wrong JSON type — e.g. priority sent as a string instead of a number.
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{"priority": "not_a_number"}`), &p); err == nil {
+		t.Fatal("expected error for priority with string value, got nil")
+	}
+}
+
 func TestUnmarshalJSONSliceNullIsSetAsNil(t *testing.T) {
 	// For non-priority fields, JSON null marks the field as set with its zero
 	// value. This allows clearing slice fields via --stdin.

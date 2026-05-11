@@ -147,7 +147,7 @@ func (p *TicketPatch) Apply(t *Ticket) {
 		t.Present["parent"] = true
 	}
 	if p.Has("deps") {
-		t.Deps = p.deps
+		t.Deps = append([]string(nil), p.deps...)
 		t.Present["deps"] = true
 	}
 	if p.Has("description") {
@@ -155,11 +155,11 @@ func (p *TicketPatch) Apply(t *Ticket) {
 		t.Present["description"] = true
 	}
 	if p.Has("acceptance_criteria") {
-		t.AcceptanceCriteria = p.acceptanceCriteria
+		t.AcceptanceCriteria = append([]string(nil), p.acceptanceCriteria...)
 		t.Present["acceptance_criteria"] = true
 	}
 	if p.Has("notes") {
-		t.Notes = p.notes
+		t.Notes = append([]string(nil), p.notes...)
 		t.Present["notes"] = true
 	}
 	if p.Has("assignee") {
@@ -167,7 +167,7 @@ func (p *TicketPatch) Apply(t *Ticket) {
 		t.Present["assignee"] = true
 	}
 	if p.Has("tags") {
-		t.Tags = p.tags
+		t.Tags = append([]string(nil), p.tags...)
 		t.Present["tags"] = true
 	}
 	if p.Has("intent") {

@@ -1046,6 +1046,62 @@ func TestCLIEditDuplicateTags(t *testing.T) {
 	}
 }
 
+func TestCLIEditStdinInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit stdin bad JSON", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	out, code := eposStdin(t, dir, "not valid json", "edit", id, "--stdin")
+	if code == 0 {
+		t.Errorf("edit --stdin invalid JSON: expected non-zero exit, got 0; output: %s", out)
+	}
+}
+
+func TestCLIEditBodyFile(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit body file", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	bodyFile := filepath.Join(dir, "body.txt")
+	if err := os.WriteFile(bodyFile, []byte("from body file"), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+
+	out, _, code := epos(t, dir, "edit", id, "--body-file", bodyFile)
+	if code != 0 {
+		t.Fatalf("edit --body-file: exit %d: %s", code, out)
+	}
+
+	stdout, _, _ = epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "from body file" {
+		t.Errorf("Description after edit --body-file: got %q, want %q", tk.Description, "from body file")
+	}
+}
+
+func TestCLIEditBodyFileNotFound(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit body file missing", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	out, _, code := epos(t, dir, "edit", id, "--body-file", filepath.Join(dir, "nonexistent.txt"))
+	if code == 0 {
+		t.Errorf("edit --body-file nonexistent: expected non-zero exit, got 0; output: %s", out)
+	}
+}
+
 // ─── epos validate / lint: non-zero exit on errors ───────────────────────────
 
 func TestCLIValidateExitsNonZeroOnInvalidTicket(t *testing.T) {
