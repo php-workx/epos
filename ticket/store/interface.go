@@ -23,7 +23,7 @@ type Store interface {
 	Link(id, targetID string) error
 	Unlink(id, targetID string) error
 
-	// Claims integration (see Epic 3 for seam deepening)
+	// Claims integration
 	ActiveClaimSet() (map[string]bool, error)
 	ListReady() ([]ticket.Ticket, error)
 }
