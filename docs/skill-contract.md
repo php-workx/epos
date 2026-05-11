@@ -220,6 +220,26 @@ epos edit <id> [flags]
 | `--note` | stringArray | Yes | Additional note (repeatable) |
 | `--stdin` | bool | No | Read edit spec as JSON from stdin |
 
+#### `--stdin` JSON input schema
+
+When `--stdin` is used, the payload is a JSON object whose keys mirror the long flag names:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `description` | string | Replacement body text (formerly `"body"` — renamed in v0.2.x) |
+| `acceptance_criteria` | array of strings | Replacement acceptance-criteria list |
+| `intent` | string | New intent |
+| `priority` | int | New priority |
+| `assignee` | string | New assignee |
+| `tags` | array of strings | Replacement tags |
+| `deps` | array of strings | Replacement dependency list |
+| `parent` | string | New parent ticket ID |
+| `notes` | array of strings | Additional notes |
+
+All keys are optional; only supplied keys are mutated.
+
+> **Migration note:** The description field key was renamed from `"body"` to `"description"` when `editTicketSpec` was promoted to the public `ticket.TicketPatch` library type. Update any scripts that pass `{"body": "..."}` to use `{"description": "..."}` instead.
+
 #### JSON output shape
 
 Same shape as `epos show --json`. Returns the full ticket after mutation.
