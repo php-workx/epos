@@ -217,3 +217,13 @@ func TestUnmarshalJSONThenApply(t *testing.T) {
 		t.Errorf("Assignee mutated: got %q, want %q", tk.Assignee, "existing")
 	}
 }
+
+func TestUnmarshalJSONPriorityNullIsNotSet(t *testing.T) {
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{"priority": null}`), &p); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if p.Has("priority") {
+		t.Error("priority=null in JSON should not be treated as set")
+	}
+}

@@ -80,6 +80,9 @@ func (p *TicketPatch) Validate() error {
 // UnmarshalJSON implements json.Unmarshaler. Only JSON keys that are present
 // in the input are marked as set; absent keys are not applied by Apply.
 // The JSON key for the description field is "description" (not "body").
+// JSON null for a field is treated as absent: it does not mark the field set
+// and will not be applied by Apply. Use an explicit zero value to set a field
+// to its zero.
 func (p *TicketPatch) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
