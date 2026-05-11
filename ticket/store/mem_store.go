@@ -24,8 +24,19 @@ func NewMemStore() *MemStore {
 	return &MemStore{tickets: make(map[string]*ticket.Ticket)}
 }
 
-// cloneTicket returns a deep copy of t, duplicating the Present and Extra maps
-// so that mutations to the returned value do not affect the stored copy.
+// cloneStrings returns a copy of s with its own backing array, or nil if s is nil.
+func cloneStrings(s []string) []string {
+	if s == nil {
+		return nil
+	}
+	c := make([]string, len(s))
+	copy(c, s)
+	return c
+}
+
+// cloneTicket returns a deep copy of t. All map and slice fields are given
+// independent backing storage so that mutations to the returned value cannot
+// corrupt the stored copy.
 func cloneTicket(t *ticket.Ticket) *ticket.Ticket {
 	cp := *t
 	if t.Present != nil {
@@ -40,6 +51,20 @@ func cloneTicket(t *ticket.Ticket) *ticket.Ticket {
 			cp.Extra[k] = v
 		}
 	}
+	cp.Deps = cloneStrings(t.Deps)
+	cp.Links = cloneStrings(t.Links)
+	cp.Notes = cloneStrings(t.Notes)
+	cp.Tags = cloneStrings(t.Tags)
+	cp.AcceptanceCriteria = cloneStrings(t.AcceptanceCriteria)
+	cp.RequirementIDs = cloneStrings(t.RequirementIDs)
+	cp.SourceRefs = cloneStrings(t.SourceRefs)
+	cp.Constraints = cloneStrings(t.Constraints)
+	cp.Warnings = cloneStrings(t.Warnings)
+	cp.FilesLikelyTouched = cloneStrings(t.FilesLikelyTouched)
+	cp.TestCases = cloneStrings(t.TestCases)
+	cp.ValidationCommands = cloneStrings(t.ValidationCommands)
+	cp.RequiredEvidence = cloneStrings(t.RequiredEvidence)
+	cp.GroupedRequirementIDs = cloneStrings(t.GroupedRequirementIDs)
 	return &cp
 }
 
