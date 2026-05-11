@@ -906,7 +906,7 @@ func TestCLIEditStdin(t *testing.T) {
 	}
 	id := strings.TrimSpace(stdout)
 
-	input := `{"body": "stdin body", "acceptance_criteria": ["stdin ac"]}`
+	input := `{"description": "stdin body", "acceptance_criteria": ["stdin ac"]}`
 	stdout2, exitCode2 := eposStdin(t, dir, input, "edit", id, "--stdin")
 	if exitCode2 != 0 {
 		t.Fatalf("edit --stdin: exit %d: %s", exitCode2, stdout2)
@@ -937,7 +937,7 @@ func TestCLIEditStdinCanClearFields(t *testing.T) {
 	}
 	id := strings.TrimSpace(stdout)
 
-	input := `{"priority": 0, "body": "", "acceptance_criteria": [], "assignee": "", "tags": [], "intent": ""}`
+	input := `{"priority": 0, "description": "", "acceptance_criteria": [], "assignee": "", "tags": [], "intent": ""}`
 	stdout, exitCode = eposStdin(t, dir, input, "edit", id, "--stdin")
 	if exitCode != 0 {
 		t.Fatalf("edit --stdin clear fields: exit %d: %s", exitCode, stdout)
