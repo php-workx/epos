@@ -253,3 +253,20 @@ func TestUnmarshalJSONPriorityNullIsNotSet(t *testing.T) {
 		t.Error("priority=null in JSON should not be treated as set")
 	}
 }
+
+func TestUnmarshalJSONSliceNullIsSetAsNil(t *testing.T) {
+	// For non-priority fields, JSON null marks the field as set with its zero
+	// value. This allows clearing slice fields via --stdin.
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{"deps": null}`), &p); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !p.Has("deps") {
+		t.Error("deps=null in JSON should be treated as set (will clear the field)")
+	}
+	tk := &ticket.Ticket{Deps: []string{"epo-existing-xxxx"}}
+	p.Apply(tk)
+	if len(tk.Deps) != 0 {
+		t.Errorf("Apply with null deps should clear the field, got %v", tk.Deps)
+	}
+}
