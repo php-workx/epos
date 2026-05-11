@@ -72,7 +72,7 @@ func NewTestTicketWithStatus(title string, status ticket.Status) *ticket.Ticket 
 // MustCreateTicket creates a ticket in the given store, failing the test if
 // the create operation returns an error. It returns the created ticket for
 // immediate use in assertions.
-func MustCreateTicket(t *testing.T, s *store.FileStore, tk *ticket.Ticket) *ticket.Ticket {
+func MustCreateTicket(t *testing.T, s store.Store, tk *ticket.Ticket) *ticket.Ticket {
 	t.Helper()
 	if err := s.Create(tk); err != nil {
 		t.Fatalf("MustCreateTicket %q: %v", tk.ID, err)
@@ -82,7 +82,7 @@ func MustCreateTicket(t *testing.T, s *store.FileStore, tk *ticket.Ticket) *tick
 
 // MustCreateTestTicket creates a new test ticket with the given title and
 // stores it in s. It returns the created ticket.
-func MustCreateTestTicket(t *testing.T, s *store.FileStore, title string) *ticket.Ticket {
+func MustCreateTestTicket(t *testing.T, s store.Store, title string) *ticket.Ticket {
 	t.Helper()
 	tk := NewTestTicket(title)
 	return MustCreateTicket(t, s, tk)

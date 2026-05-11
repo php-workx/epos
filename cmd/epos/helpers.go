@@ -12,7 +12,7 @@ import (
 
 // storeFromFlag creates a FileStore rooted at the value of the --dir flag.
 // The .tickets subdirectory is created automatically if it does not exist.
-func storeFromFlag() (*store.FileStore, error) {
+func storeFromFlag() (store.Store, error) {
 	return store.NewFileStore(dirFlag)
 }
 
@@ -20,7 +20,7 @@ func storeFromFlag() (*store.FileStore, error) {
 // ticket. It returns the resolved full ID, the loaded ticket, and any error.
 // Returns *ticket.TicketNotFoundError if no match is found and
 // *ticket.AmbiguousIDError if the partial matches more than one ticket.
-func resolveTicketID(s *store.FileStore, partial string) (string, *ticket.Ticket, error) {
+func resolveTicketID(s store.Store, partial string) (string, *ticket.Ticket, error) {
 	id, err := s.ResolveID(partial)
 	if err != nil {
 		return "", nil, err
