@@ -113,7 +113,7 @@ func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 	return ticket.NewTicket(opts...)
 }
 
-func createTicketWithGeneratedID(s *store.FileStore, spec *newTicketSpec, generateID func(string) string, attempts int) (*ticket.Ticket, error) {
+func createTicketWithGeneratedID(s store.Store, spec *newTicketSpec, generateID func(string) string, attempts int) (*ticket.Ticket, error) {
 	var lastCollision *ticket.IDCollisionError
 	for range attempts {
 		tk := specToTicket(spec)
@@ -200,7 +200,7 @@ var newCmd = &cobra.Command{
 			return err
 		}
 
-		s, err := store.NewFileStore(dirFlag)
+		s, err := storeFromFlag()
 		if err != nil {
 			return err
 		}
