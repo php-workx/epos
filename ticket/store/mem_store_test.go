@@ -584,3 +584,89 @@ func TestMemStoreReadIsolatesSlices(t *testing.T) {
 		t.Error("Read returned Deps slice sharing backing array with internal store — isolation violated")
 	}
 }
+
+func TestMemStoreReadIsolatesScope(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("scoped")
+	tk.Scope = ticket.TaskScope{OwnedPaths: []string{"pkg/foo"}}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got.Scope.OwnedPaths[0] = "tampered"
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if len(got2.Scope.OwnedPaths) > 0 && got2.Scope.OwnedPaths[0] == "tampered" {
+		t.Error("Scope.OwnedPaths shares backing array with internal store — isolation violated")
+	}
+}
+
+func TestMemStoreReadIsolatesImplementationDetailFiles(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("detailed")
+	tk.ImplementationDetail = ticket.ImplementationDetail{
+		Files: []ticket.FileChange{{Path: "original.go", Change: "add"}},
+	}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got.ImplementationDetail.Files[0].Path = "tampered.go"
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if len(got2.ImplementationDetail.Files) > 0 && got2.ImplementationDetail.Files[0].Path == "tampered.go" {
+		t.Error("ImplementationDetail.Files shares backing array with internal store — isolation violated")
+	}
+}
+
+func TestMemStoreReadIsolatesLearningContext(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("learning")
+	tk.LearningContext = []ticket.LearningRef{{ID: "ref-001", Title: "original"}}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got.LearningContext[0].Title = "tampered"
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if len(got2.LearningContext) > 0 && got2.LearningContext[0].Title == "tampered" {
+		t.Error("LearningContext shares backing array with internal store — isolation violated")
+	}
+}
+
+func TestMemStoreReadIsolatesValidationChecks(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("validated")
+	tk.ValidationChecks = []ticket.ValidationCheck{{Command: "go test ./...", Expected: "ok"}}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got.ValidationChecks[0].Command = "tampered"
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if len(got2.ValidationChecks) > 0 && got2.ValidationChecks[0].Command == "tampered" {
+		t.Error("ValidationChecks shares backing array with internal store — isolation violated")
+	}
+}
