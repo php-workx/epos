@@ -65,6 +65,23 @@ func cloneTicket(t *ticket.Ticket) *ticket.Ticket {
 	cp.ValidationCommands = cloneStrings(t.ValidationCommands)
 	cp.RequiredEvidence = cloneStrings(t.RequiredEvidence)
 	cp.GroupedRequirementIDs = cloneStrings(t.GroupedRequirementIDs)
+	// Deep-copy inlined TaskScope slice fields.
+	cp.Scope.OwnedPaths = cloneStrings(t.Scope.OwnedPaths)
+	cp.Scope.ReadOnlyPaths = cloneStrings(t.Scope.ReadOnlyPaths)
+	cp.Scope.SharedPaths = cloneStrings(t.Scope.SharedPaths)
+	// Deep-copy struct slices — elements are value types with no pointer fields.
+	if t.ImplementationDetail.Files != nil {
+		cp.ImplementationDetail.Files = make([]ticket.FileChange, len(t.ImplementationDetail.Files))
+		copy(cp.ImplementationDetail.Files, t.ImplementationDetail.Files)
+	}
+	if t.LearningContext != nil {
+		cp.LearningContext = make([]ticket.LearningRef, len(t.LearningContext))
+		copy(cp.LearningContext, t.LearningContext)
+	}
+	if t.ValidationChecks != nil {
+		cp.ValidationChecks = make([]ticket.ValidationCheck, len(t.ValidationChecks))
+		copy(cp.ValidationChecks, t.ValidationChecks)
+	}
 	return &cp
 }
 
