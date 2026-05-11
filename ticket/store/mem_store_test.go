@@ -3,6 +3,7 @@ package store_test
 import (
 	"errors"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/php-workx/epos/ticket"
@@ -320,5 +321,266 @@ func TestMemStoreListReady(t *testing.T) {
 	}
 	if ids[blocked.ID] {
 		t.Errorf("ticket with open dep should not be in ready: %v", ids)
+	}
+}
+
+// ─── AddNote ─────────────────────────────────────────────────────────────────
+
+func TestMemStoreAddNote(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("note me")
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := m.AddNote(tk.ID, "first note"); err != nil {
+		t.Fatalf("AddNote: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read after AddNote: %v", err)
+	}
+	if len(got.Notes) != 1 {
+		t.Fatalf("Notes: got %d entries, want 1", len(got.Notes))
+	}
+	if !strings.Contains(got.Notes[0], "first note") {
+		t.Errorf("Note content: got %q, want to contain %q", got.Notes[0], "first note")
+	}
+}
+
+func TestMemStoreAddNoteNotFound(t *testing.T) {
+	m := store.NewMemStore()
+	err := m.AddNote("epo-ghost-xxxx", "note")
+	if err == nil {
+		t.Fatal("expected TicketNotFoundError, got nil")
+	}
+	if _, ok := err.(*ticket.TicketNotFoundError); !ok {
+		t.Errorf("expected *TicketNotFoundError, got %T: %v", err, err)
+	}
+}
+
+// ─── RemoveDep ───────────────────────────────────────────────────────────────
+
+func TestMemStoreRemoveDep(t *testing.T) {
+	m := store.NewMemStore()
+	a := testutil.NewTestTicket("a")
+	b := testutil.NewTestTicket("b")
+	for _, tk := range []*ticket.Ticket{a, b} {
+		if err := m.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+	if err := m.AddDep(a.ID, b.ID); err != nil {
+		t.Fatalf("AddDep: %v", err)
+	}
+	if err := m.RemoveDep(a.ID, b.ID); err != nil {
+		t.Fatalf("RemoveDep: %v", err)
+	}
+	got, err := m.Read(a.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(got.Deps) != 0 {
+		t.Errorf("Deps after RemoveDep: got %v, want empty", got.Deps)
+	}
+	// Removing absent dep is a no-op, not an error.
+	if err := m.RemoveDep(a.ID, b.ID); err != nil {
+		t.Errorf("RemoveDep idempotent: got %v, want nil", err)
+	}
+}
+
+// ─── Link / Unlink ───────────────────────────────────────────────────────────
+
+func TestMemStoreLink(t *testing.T) {
+	m := store.NewMemStore()
+	a := testutil.NewTestTicket("a")
+	b := testutil.NewTestTicket("b")
+	for _, tk := range []*ticket.Ticket{a, b} {
+		if err := m.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+	if err := m.Link(a.ID, b.ID); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	gotA, err := m.Read(a.ID)
+	if err != nil {
+		t.Fatalf("Read a: %v", err)
+	}
+	gotB, err := m.Read(b.ID)
+	if err != nil {
+		t.Fatalf("Read b: %v", err)
+	}
+	if len(gotA.Links) != 1 || gotA.Links[0] != b.ID {
+		t.Errorf("a.Links = %v, want [%s]", gotA.Links, b.ID)
+	}
+	if len(gotB.Links) != 1 || gotB.Links[0] != a.ID {
+		t.Errorf("b.Links = %v, want [%s]", gotB.Links, a.ID)
+	}
+	// Link is idempotent.
+	if err := m.Link(a.ID, b.ID); err != nil {
+		t.Errorf("Link idempotent: got %v, want nil", err)
+	}
+	gotA, _ = m.Read(a.ID)
+	if len(gotA.Links) != 1 {
+		t.Errorf("Link idempotent: a.Links = %v, want length 1", gotA.Links)
+	}
+}
+
+func TestMemStoreLinkSelf(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("self")
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	err := m.Link(tk.ID, tk.ID)
+	if err == nil {
+		t.Fatal("expected ValidationError for self-link, got nil")
+	}
+	if _, ok := err.(*ticket.ValidationError); !ok {
+		t.Errorf("expected *ValidationError, got %T: %v", err, err)
+	}
+}
+
+func TestMemStoreUnlink(t *testing.T) {
+	m := store.NewMemStore()
+	a := testutil.NewTestTicket("a")
+	b := testutil.NewTestTicket("b")
+	for _, tk := range []*ticket.Ticket{a, b} {
+		if err := m.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+	if err := m.Link(a.ID, b.ID); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	if err := m.Unlink(a.ID, b.ID); err != nil {
+		t.Fatalf("Unlink: %v", err)
+	}
+	gotA, _ := m.Read(a.ID)
+	gotB, _ := m.Read(b.ID)
+	if len(gotA.Links) != 0 {
+		t.Errorf("a.Links after Unlink: got %v, want empty", gotA.Links)
+	}
+	if len(gotB.Links) != 0 {
+		t.Errorf("b.Links after Unlink: got %v, want empty", gotB.Links)
+	}
+}
+
+// ─── ListAllChildren / FilterReadyChildren ────────────────────────────────────
+
+func TestMemStoreListAllChildren(t *testing.T) {
+	m := store.NewMemStore()
+	parent := testutil.NewTestTicket("parent")
+	child1 := testutil.NewTestTicket("child1")
+	child1.Parent = parent.ID
+	child1.Present["parent"] = true
+	child2 := testutil.NewTestTicket("child2")
+	child2.Parent = parent.ID
+	child2.Present["parent"] = true
+	other := testutil.NewTestTicket("other")
+
+	for _, tk := range []*ticket.Ticket{parent, child1, child2, other} {
+		if err := m.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+
+	children, err := m.ListAllChildren(parent.ID)
+	if err != nil {
+		t.Fatalf("ListAllChildren: %v", err)
+	}
+	if len(children) != 2 {
+		t.Fatalf("ListAllChildren: got %d children, want 2", len(children))
+	}
+	ids := map[string]bool{children[0].ID: true, children[1].ID: true}
+	if !ids[child1.ID] || !ids[child2.ID] {
+		t.Errorf("ListAllChildren: got %v, want [%s %s]", ids, child1.ID, child2.ID)
+	}
+	// Unrelated parent returns empty slice.
+	none, err := m.ListAllChildren("epo-no-such-parent")
+	if err != nil {
+		t.Fatalf("ListAllChildren nonexistent: %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("ListAllChildren nonexistent: got %v, want empty", none)
+	}
+}
+
+func TestMemStoreFilterReadyChildren(t *testing.T) {
+	m := store.NewMemStore()
+	parent := testutil.NewTestTicket("parent")
+	blocker := testutil.NewTestTicket("blocker")
+	open := testutil.NewTestTicket("open")
+	open.Parent = parent.ID
+	open.Present["parent"] = true
+	blocked := testutil.NewTestTicket("blocked")
+	blocked.Parent = parent.ID
+	blocked.Present["parent"] = true
+	blocked.Deps = []string{blocker.ID}
+	blocked.Present["deps"] = true
+
+	for _, tk := range []*ticket.Ticket{parent, blocker, open, blocked} {
+		if err := m.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+
+	ready, err := m.FilterReadyChildren(parent.ID, func(string) bool { return false })
+	if err != nil {
+		t.Fatalf("FilterReadyChildren: %v", err)
+	}
+	ids := make(map[string]bool, len(ready))
+	for _, tk := range ready {
+		ids[tk.ID] = true
+	}
+	if !ids[open.ID] {
+		t.Errorf("open child missing from ready: %v", ids)
+	}
+	if ids[blocked.ID] {
+		t.Errorf("blocked child should not be in ready: %v", ids)
+	}
+}
+
+// ─── ActiveClaimSet ───────────────────────────────────────────────────────────
+
+func TestMemStoreActiveClaimSet(t *testing.T) {
+	m := store.NewMemStore()
+	claims, err := m.ActiveClaimSet()
+	if err != nil {
+		t.Fatalf("ActiveClaimSet: %v", err)
+	}
+	if len(claims) != 0 {
+		t.Errorf("ActiveClaimSet: got %v, want empty map", claims)
+	}
+}
+
+// ─── Isolation ───────────────────────────────────────────────────────────────
+
+func TestMemStoreReadIsolatesSlices(t *testing.T) {
+	m := store.NewMemStore()
+	a := testutil.NewTestTicket("a")
+	b := testutil.NewTestTicket("b")
+	for _, tk := range []*ticket.Ticket{a, b} {
+		if err := m.Create(tk); err != nil {
+			t.Fatalf("Create %s: %v", tk.ID, err)
+		}
+	}
+	if err := m.AddDep(a.ID, b.ID); err != nil {
+		t.Fatalf("AddDep: %v", err)
+	}
+
+	// Mutate Deps on the returned copy — stored ticket must be unaffected.
+	got, err := m.Read(a.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got.Deps[0] = "tampered"
+
+	got2, err := m.Read(a.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if got2.Deps[0] == "tampered" {
+		t.Error("Read returned Deps slice sharing backing array with internal store — isolation violated")
 	}
 }
