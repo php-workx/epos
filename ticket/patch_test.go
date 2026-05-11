@@ -1,6 +1,7 @@
 package ticket_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/php-workx/epos/ticket"
@@ -142,5 +143,77 @@ func TestValidateUnsetFieldsSkipChecks(t *testing.T) {
 	p.SetAssignee("alice") // something set, but not priority/tags/ac
 	if err := p.Validate(); err != nil {
 		t.Errorf("patch with only assignee set: got %v, want nil", err)
+	}
+}
+
+func TestUnmarshalJSONPartialInput(t *testing.T) {
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{"assignee":"bob"}`), &p); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	tk := &ticket.Ticket{Priority: 7}
+	p.Apply(tk)
+	if tk.Assignee != "bob" {
+		t.Errorf("Assignee: got %q, want %q", tk.Assignee, "bob")
+	}
+	// Priority was not in the JSON — must remain untouched.
+	if tk.Priority != 7 {
+		t.Errorf("Priority mutated by partial patch: got %d, want 7", tk.Priority)
+	}
+}
+
+func TestUnmarshalJSONPriorityZeroIsSet(t *testing.T) {
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{"priority":0}`), &p); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !p.Has("priority") {
+		t.Error("priority=0 in JSON should be treated as set, not absent")
+	}
+	tk := &ticket.Ticket{Priority: 5}
+	p.Apply(tk)
+	if tk.Priority != 0 {
+		t.Errorf("Priority: got %d, want 0", tk.Priority)
+	}
+}
+
+func TestUnmarshalJSONUnknownKeysIgnored(t *testing.T) {
+	var p ticket.TicketPatch
+	err := json.Unmarshal([]byte(`{"unknown_field":"value","assignee":"alice"}`), &p)
+	if err != nil {
+		t.Fatalf("Unmarshal with unknown key: %v", err)
+	}
+	if !p.Has("assignee") {
+		t.Error("known field 'assignee' should be set")
+	}
+}
+
+func TestUnmarshalJSONInvalidJSON(t *testing.T) {
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{invalid}`), &p); err == nil {
+		t.Fatal("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestUnmarshalJSONThenApply(t *testing.T) {
+	var p ticket.TicketPatch
+	input := `{"priority":3,"tags":["urgent","review"],"description":"new desc"}`
+	if err := json.Unmarshal([]byte(input), &p); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	tk := &ticket.Ticket{Assignee: "existing"}
+	p.Apply(tk)
+	if tk.Priority != 3 {
+		t.Errorf("Priority: got %d, want 3", tk.Priority)
+	}
+	if len(tk.Tags) != 2 {
+		t.Errorf("Tags: got %v, want [urgent review]", tk.Tags)
+	}
+	if tk.Description != "new desc" {
+		t.Errorf("Description: got %q, want %q", tk.Description, "new desc")
+	}
+	// Assignee was not in JSON — must remain untouched.
+	if tk.Assignee != "existing" {
+		t.Errorf("Assignee mutated: got %q, want %q", tk.Assignee, "existing")
 	}
 }

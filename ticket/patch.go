@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -71,6 +72,56 @@ func (p *TicketPatch) Validate() error {
 			if strings.TrimSpace(ac) == "" {
 				return &ValidationError{Field: "acceptance_criteria", Message: fmt.Sprintf("item %d is empty", i)}
 			}
+		}
+	}
+	return nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler. Only JSON keys that are present
+// in the input are marked as set; absent keys are not applied by Apply.
+// The JSON key for the description field is "description" (not "body").
+func (p *TicketPatch) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	type shadow struct {
+		Priority           *int     `json:"priority"`
+		Parent             string   `json:"parent"`
+		Deps               []string `json:"deps"`
+		Description        string   `json:"description"`
+		AcceptanceCriteria []string `json:"acceptance_criteria"`
+		Notes              []string `json:"notes"`
+		Assignee           string   `json:"assignee"`
+		Tags               []string `json:"tags"`
+		Intent             string   `json:"intent"`
+	}
+	var s shadow
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	for key := range raw {
+		switch key {
+		case "priority":
+			if s.Priority != nil {
+				p.SetPriority(*s.Priority)
+			}
+		case "parent":
+			p.SetParent(s.Parent)
+		case "deps":
+			p.SetDeps(s.Deps)
+		case "description":
+			p.SetDescription(s.Description)
+		case "acceptance_criteria":
+			p.SetAcceptanceCriteria(s.AcceptanceCriteria)
+		case "notes":
+			p.SetNotes(s.Notes)
+		case "assignee":
+			p.SetAssignee(s.Assignee)
+		case "tags":
+			p.SetTags(s.Tags)
+		case "intent":
+			p.SetIntent(s.Intent)
 		}
 	}
 	return nil
