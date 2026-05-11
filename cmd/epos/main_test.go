@@ -760,6 +760,31 @@ func TestCLINewStdinFlagsOverride(t *testing.T) {
 	}
 }
 
+// TestCLINewStdinUsesBodyKey pins the contract that new --stdin accepts "body"
+// (not "description") for the description field. This diverges from edit --stdin
+// which uses "description" — see docs/skill-contract.md.
+func TestCLINewStdinUsesBodyKey(t *testing.T) {
+	dir := t.TempDir()
+	input := `{"title":"stdin ticket","type":"task","body":"body from stdin"}`
+	stdout, exitCode := eposStdin(t, dir, input, "new", "stdin ticket", "--stdin")
+	if exitCode != 0 {
+		t.Fatalf("new --stdin: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	showOut, _, exitCode2 := epos(t, dir, "show", id, "--json")
+	if exitCode2 != 0 {
+		t.Fatalf("show: exit %d: %s", exitCode2, showOut)
+	}
+	var tk map[string]any
+	if err := json.Unmarshal([]byte(showOut), &tk); err != nil {
+		t.Fatalf("json unmarshal: %v", err)
+	}
+	if tk["description"] != "body from stdin" {
+		t.Errorf("description: got %v, want %q", tk["description"], "body from stdin")
+	}
+}
+
 func TestCLINewStdinInvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	stdout, exitCode := eposStdin(t, dir, "not valid json", "new", "Bad stdin", "--stdin")

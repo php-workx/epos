@@ -240,6 +240,8 @@ All keys are optional; only supplied keys are mutated.
 
 > **Migration note:** The description field key was renamed from `"body"` to `"description"` when `editTicketSpec` was promoted to the public `ticket.TicketPatch` library type. Update any scripts that pass `{"body": "..."}` to use `{"description": "..."}` instead.
 
+> **Key divergence — `new` vs `edit`:** `epos new --stdin` still uses `"body"` for the description field (because `newTicketSpec` is a CLI-internal struct that was not part of this refactor), while `epos edit --stdin` uses `"description"` (the `ticket.TicketPatch` field name). This divergence is intentional: the `edit` command's schema was updated when `editTicketSpec` was promoted to the library `ticket.TicketPatch` type; the `new` command's internal spec was left unchanged.
+
 #### JSON output shape
 
 Same shape as `epos show --json`. Returns the full ticket after mutation.
