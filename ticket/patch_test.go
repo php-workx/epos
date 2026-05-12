@@ -221,6 +221,30 @@ func TestUnmarshalJSONInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestUnmarshalJSONNullPayloadIsError(t *testing.T) {
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`null`), &p); err == nil {
+		t.Fatal("expected error for null payload, got nil")
+	}
+}
+
+func TestUnmarshalJSONResetOnReuse(t *testing.T) {
+	var p ticket.TicketPatch
+	if err := json.Unmarshal([]byte(`{"tags":["x"]}`), &p); err != nil {
+		t.Fatalf("first Unmarshal: %v", err)
+	}
+	// Second unmarshal with a different field — tags must not carry over.
+	if err := json.Unmarshal([]byte(`{"assignee":"alice"}`), &p); err != nil {
+		t.Fatalf("second Unmarshal: %v", err)
+	}
+	if p.Has("tags") {
+		t.Error("stale 'tags' present entry from first unmarshal survived second call")
+	}
+	if !p.Has("assignee") {
+		t.Error("'assignee' should be set after second unmarshal")
+	}
+}
+
 func TestUnmarshalJSONThenApply(t *testing.T) {
 	var p ticket.TicketPatch
 	input := `{"priority":3,"tags":["urgent","review"],"description":"new desc"}`

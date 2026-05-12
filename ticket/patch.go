@@ -1,6 +1,7 @@
 package ticket
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -86,6 +87,11 @@ func (p *TicketPatch) Validate() error {
 // equivalent to setting the field to its zero value — the field IS marked set
 // and Apply will clear it on the ticket.
 func (p *TicketPatch) UnmarshalJSON(data []byte) error {
+	// Reset to avoid stale present entries when the same instance is reused.
+	*p = TicketPatch{}
+	if trimmed := bytes.TrimSpace(data); len(trimmed) == 0 || trimmed[0] != '{' {
+		return fmt.Errorf("ticket patch JSON must be an object")
+	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
