@@ -36,6 +36,8 @@ func cloneStrings(s []string) []string {
 
 // deepCopyAny returns a deep copy of v for the yaml.v3 type universe:
 // map[string]any, []any, and scalar types (string, int, bool, float64, etc.).
+// Precondition: v must originate from yaml.v3 unmarshaling. Cycles and
+// []byte values (yaml.v3 !!binary) are not handled.
 func deepCopyAny(v any) any {
 	switch val := v.(type) {
 	case map[string]any:
@@ -304,6 +306,10 @@ func (m *MemStore) AddDep(id, depID string) error {
 	if !ok {
 		return &ticket.TicketNotFoundError{ID: fullID}
 	}
+	// fullDep may have been deleted between ResolveID and lock acquisition.
+	if _, ok := m.tickets[fullDep]; !ok {
+		return &ticket.TicketNotFoundError{ID: fullDep}
+	}
 	for _, d := range t.Deps {
 		if d == fullDep {
 			return nil // already present
@@ -343,7 +349,7 @@ func (m *MemStore) RemoveDep(id, depID string) error {
 		return &ticket.TicketNotFoundError{ID: fullID}
 	}
 	cp := cloneTicket(t)
-	filtered := cp.Deps[:0]
+	filtered := make([]string, 0, len(cp.Deps))
 	removed := false
 	for _, d := range cp.Deps {
 		if d == target {
@@ -415,6 +421,14 @@ func (m *MemStore) Link(id, targetID string) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Pre-check both tickets exist before writing either side, preventing
+	// a partial-link if one ticket was deleted between ResolveID and lock.
+	if _, ok := m.tickets[fullA]; !ok {
+		return &ticket.TicketNotFoundError{ID: fullA}
+	}
+	if _, ok := m.tickets[fullB]; !ok {
+		return &ticket.TicketNotFoundError{ID: fullB}
+	}
 	if err := m.applyLinkLocked(fullA, fullB); err != nil {
 		return err
 	}
@@ -434,6 +448,13 @@ func (m *MemStore) Unlink(id, targetID string) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Pre-check both tickets exist before writing either side.
+	if _, ok := m.tickets[fullA]; !ok {
+		return &ticket.TicketNotFoundError{ID: fullA}
+	}
+	if _, ok := m.tickets[fullB]; !ok {
+		return &ticket.TicketNotFoundError{ID: fullB}
+	}
 	if err := m.applyUnlinkLocked(fullA, fullB); err != nil {
 		return err
 	}
