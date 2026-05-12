@@ -531,7 +531,10 @@ func appendUnique(slice []string, v string) []string {
 func removeFirst(slice []string, v string) []string {
 	for i, s := range slice {
 		if s == v {
-			return append(slice[:i], slice[i+1:]...)
+			result := make([]string, 0, len(slice)-1)
+			result = append(result, slice[:i]...)
+			result = append(result, slice[i+1:]...)
+			return result
 		}
 	}
 	return slice

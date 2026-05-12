@@ -68,6 +68,44 @@ func TestMemStoreRead(t *testing.T) {
 	}
 }
 
+func TestMemStoreReadIsolatesSlices(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("slice isolation")
+	tk.Deps = []string{"epo-dep-xxxx"}
+	tk.Tags = []string{"alpha"}
+	tk.Notes = []string{"note one"}
+	tk.AcceptanceCriteria = []string{"criterion one"}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	// Mutate every slice on the returned copy.
+	got.Deps[0] = "mutated"
+	got.Tags[0] = "mutated"
+	got.Notes[0] = "mutated"
+	got.AcceptanceCriteria[0] = "mutated"
+
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if got2.Deps[0] != "epo-dep-xxxx" {
+		t.Errorf("Deps isolation: stored value mutated to %q", got2.Deps[0])
+	}
+	if got2.Tags[0] != "alpha" {
+		t.Errorf("Tags isolation: stored value mutated to %q", got2.Tags[0])
+	}
+	if got2.Notes[0] != "note one" {
+		t.Errorf("Notes isolation: stored value mutated to %q", got2.Notes[0])
+	}
+	if got2.AcceptanceCriteria[0] != "criterion one" {
+		t.Errorf("AcceptanceCriteria isolation: stored value mutated to %q", got2.AcceptanceCriteria[0])
+	}
+}
+
 func TestMemStoreReadNotFound(t *testing.T) {
 	m := store.NewMemStore()
 	_, err := m.Read("epo-does-not-exist")
@@ -562,35 +600,6 @@ func TestMemStoreActiveClaimSet(t *testing.T) {
 }
 
 // ─── Isolation ───────────────────────────────────────────────────────────────
-
-func TestMemStoreReadIsolatesSlices(t *testing.T) {
-	m := store.NewMemStore()
-	a := testutil.NewTestTicket("a")
-	b := testutil.NewTestTicket("b")
-	for _, tk := range []*ticket.Ticket{a, b} {
-		if err := m.Create(tk); err != nil {
-			t.Fatalf("Create %s: %v", tk.ID, err)
-		}
-	}
-	if err := m.AddDep(a.ID, b.ID); err != nil {
-		t.Fatalf("AddDep: %v", err)
-	}
-
-	// Mutate Deps on the returned copy — stored ticket must be unaffected.
-	got, err := m.Read(a.ID)
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-	got.Deps[0] = "tampered"
-
-	got2, err := m.Read(a.ID)
-	if err != nil {
-		t.Fatalf("second Read: %v", err)
-	}
-	if got2.Deps[0] == "tampered" {
-		t.Error("Read returned Deps slice sharing backing array with internal store — isolation violated")
-	}
-}
 
 func TestMemStoreReadIsolatesScope(t *testing.T) {
 	m := store.NewMemStore()

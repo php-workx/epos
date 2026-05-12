@@ -760,6 +760,31 @@ func TestCLINewStdinFlagsOverride(t *testing.T) {
 	}
 }
 
+// TestCLINewStdinUsesBodyKey pins the contract that new --stdin accepts "body"
+// (not "description") for the description field. This diverges from edit --stdin
+// which uses "description" — see docs/skill-contract.md.
+func TestCLINewStdinUsesBodyKey(t *testing.T) {
+	dir := t.TempDir()
+	input := `{"title":"stdin ticket","type":"task","body":"body from stdin"}`
+	stdout, exitCode := eposStdin(t, dir, input, "new", "stdin ticket", "--stdin")
+	if exitCode != 0 {
+		t.Fatalf("new --stdin: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	showOut, _, exitCode2 := epos(t, dir, "show", id, "--json")
+	if exitCode2 != 0 {
+		t.Fatalf("show: exit %d: %s", exitCode2, showOut)
+	}
+	var tk map[string]any
+	if err := json.Unmarshal([]byte(showOut), &tk); err != nil {
+		t.Fatalf("json unmarshal: %v", err)
+	}
+	if tk["description"] != "body from stdin" {
+		t.Errorf("description: got %v, want %q", tk["description"], "body from stdin")
+	}
+}
+
 func TestCLINewStdinInvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	stdout, exitCode := eposStdin(t, dir, "not valid json", "new", "Bad stdin", "--stdin")
@@ -906,7 +931,7 @@ func TestCLIEditStdin(t *testing.T) {
 	}
 	id := strings.TrimSpace(stdout)
 
-	input := `{"body": "stdin body", "acceptance_criteria": ["stdin ac"]}`
+	input := `{"description": "stdin body", "acceptance_criteria": ["stdin ac"]}`
 	stdout2, exitCode2 := eposStdin(t, dir, input, "edit", id, "--stdin")
 	if exitCode2 != 0 {
 		t.Fatalf("edit --stdin: exit %d: %s", exitCode2, stdout2)
@@ -919,6 +944,31 @@ func TestCLIEditStdin(t *testing.T) {
 	}
 	if tk.Description != "stdin body" {
 		t.Errorf("edit --stdin Description: got %q", tk.Description)
+	}
+}
+
+func TestCLIEditStdinBodyKeyIsIgnored(t *testing.T) {
+	// edit --stdin uses "description", not "body". Sending "body" must be a no-op.
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "body key test", "--type", "task", "--body", "original description")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	input := `{"body": "should be ignored"}`
+	stdout2, exitCode2 := eposStdin(t, dir, input, "edit", id, "--stdin")
+	if exitCode2 != 0 {
+		t.Fatalf("edit --stdin: exit %d: %s", exitCode2, stdout2)
+	}
+
+	stdout3, _, _ := epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout3), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "original description" {
+		t.Errorf("edit --stdin with 'body' key mutated description: got %q, want %q", tk.Description, "original description")
 	}
 }
 
@@ -937,7 +987,7 @@ func TestCLIEditStdinCanClearFields(t *testing.T) {
 	}
 	id := strings.TrimSpace(stdout)
 
-	input := `{"priority": 0, "body": "", "acceptance_criteria": [], "assignee": "", "tags": [], "intent": ""}`
+	input := `{"priority": 0, "description": "", "acceptance_criteria": [], "assignee": "", "tags": [], "intent": ""}`
 	stdout, exitCode = eposStdin(t, dir, input, "edit", id, "--stdin")
 	if exitCode != 0 {
 		t.Fatalf("edit --stdin clear fields: exit %d: %s", exitCode, stdout)
@@ -993,6 +1043,62 @@ func TestCLIEditDuplicateTags(t *testing.T) {
 	_, _, exitCode = epos(t, dir, "edit", id, "--tags", "foo,foo")
 	if exitCode != 2 {
 		t.Errorf("edit --tags duplicate: expected exit 2, got %d", exitCode)
+	}
+}
+
+func TestCLIEditStdinInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit stdin bad JSON", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	out, code := eposStdin(t, dir, "not valid json", "edit", id, "--stdin")
+	if code == 0 {
+		t.Errorf("edit --stdin invalid JSON: expected non-zero exit, got 0; output: %s", out)
+	}
+}
+
+func TestCLIEditBodyFile(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit body file", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	bodyFile := filepath.Join(dir, "body.txt")
+	if err := os.WriteFile(bodyFile, []byte("from body file"), 0o644); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+
+	out, _, code := epos(t, dir, "edit", id, "--body-file", bodyFile)
+	if code != 0 {
+		t.Fatalf("edit --body-file: exit %d: %s", code, out)
+	}
+
+	stdout, _, _ = epos(t, dir, "show", id, "--json")
+	var tk ticket.Ticket
+	if err := json.Unmarshal([]byte(stdout), &tk); err != nil {
+		t.Fatalf("parse JSON: %v", err)
+	}
+	if tk.Description != "from body file" {
+		t.Errorf("Description after edit --body-file: got %q, want %q", tk.Description, "from body file")
+	}
+}
+
+func TestCLIEditBodyFileNotFound(t *testing.T) {
+	dir := t.TempDir()
+	stdout, _, exitCode := epos(t, dir, "new", "Edit body file missing", "--type", "task")
+	if exitCode != 0 {
+		t.Fatalf("new: exit %d: %s", exitCode, stdout)
+	}
+	id := strings.TrimSpace(stdout)
+
+	out, _, code := epos(t, dir, "edit", id, "--body-file", filepath.Join(dir, "nonexistent.txt"))
+	if code == 0 {
+		t.Errorf("edit --body-file nonexistent: expected non-zero exit, got 0; output: %s", out)
 	}
 }
 

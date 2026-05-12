@@ -160,7 +160,7 @@ epos edit epo-auth --ac "new acceptance criterion" --note "follow-up note"
 Or via JSON stdin:
 
 ```bash
-echo '{"body": "updated narrative", "acceptance_criteria": ["new criterion"]}' \
+echo '{"description": "updated narrative", "acceptance_criteria": ["new criterion"]}' \
   | epos edit epo-auth --stdin
 ```
 
