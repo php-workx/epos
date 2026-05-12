@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/php-workx/epos/ticket"
@@ -456,8 +457,14 @@ func TestMemStoreUnlink(t *testing.T) {
 	if err := m.Unlink(a.ID, b.ID); err != nil {
 		t.Fatalf("Unlink: %v", err)
 	}
-	gotA, _ := m.Read(a.ID)
-	gotB, _ := m.Read(b.ID)
+	gotA, err := m.Read(a.ID)
+	if err != nil {
+		t.Fatalf("Read a: %v", err)
+	}
+	gotB, err := m.Read(b.ID)
+	if err != nil {
+		t.Fatalf("Read b: %v", err)
+	}
 	if len(gotA.Links) != 0 {
 		t.Errorf("a.Links after Unlink: got %v, want empty", gotA.Links)
 	}
@@ -706,4 +713,73 @@ func TestMemStoreReadIsolatesExtraNestedValues(t *testing.T) {
 	if got2.Extra["scalar"] != "flat" {
 		t.Errorf("Extra scalar: got %v, want %q", got2.Extra["scalar"], "flat")
 	}
+}
+
+func TestMemStoreReadIsolatesPresentMap(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("present-map")
+	tk.Present = map[string]bool{"status": true, "title": true}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	got.Present["status"] = false
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if !got2.Present["status"] {
+		t.Error("Present map shares backing with internal store — isolation violated")
+	}
+}
+
+func TestMemStoreLinkConcurrentDelete(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		m := store.NewMemStore()
+		a := testutil.NewTestTicket("ticket-a")
+		b := testutil.NewTestTicket("ticket-b")
+		for _, tk := range []*ticket.Ticket{a, b} {
+			if err := m.Create(tk); err != nil {
+				t.Fatalf("Create %s: %v", tk.ID, err)
+			}
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = m.Link(a.ID, b.ID)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = m.Delete(b.ID)
+		}()
+		wg.Wait()
+
+		gotA, errA := m.Read(a.ID)
+		gotB, errB := m.Read(b.ID)
+		if errA != nil || errB != nil {
+			// One or both tickets deleted; stale links on survivors are valid
+			// (Link may have completed before Delete — that is correct behaviour).
+			continue
+		}
+		// Both tickets survive — links must be symmetric.
+		aHasB := slicesContains(gotA.Links, b.ID)
+		bHasA := slicesContains(gotB.Links, a.ID)
+		if aHasB != bHasA {
+			t.Errorf("iteration %d: asymmetric link: a has b=%v, b has a=%v", i, aHasB, bHasA)
+		}
+	}
+}
+
+func slicesContains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
