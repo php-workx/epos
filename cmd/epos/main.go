@@ -4,31 +4,26 @@ package main
 import (
 	"errors"
 	"os"
-
-	"github.com/php-workx/epos/ticket"
 )
 
+// exitCoder is implemented by domain errors that carry a deterministic exit code.
+type exitCoder interface{ ExitCode() int }
+
 // exitCode maps an error to a deterministic exit code per the CLI spec:
+//   - nil                         → 0
+//   - *ticket.ValidationError     → 2
 //   - *ticket.TicketNotFoundError → 3
-//   - *ticket.AmbiguousIDError  → 4
-//   - *ticket.ValidationError    → 2
-//   - nil                       → 0
-//   - any other error           → 1
+//   - *ticket.AmbiguousIDError    → 4
+//   - *ticket.CycleDetectedError  → 5
+//   - claim errors                → 6
+//   - any other error             → 1
 func exitCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	var notFound *ticket.TicketNotFoundError
-	if errors.As(err, &notFound) {
-		return 3
-	}
-	var ambiguous *ticket.AmbiguousIDError
-	if errors.As(err, &ambiguous) {
-		return 4
-	}
-	var validation *ticket.ValidationError
-	if errors.As(err, &validation) {
-		return 2
+	var ec exitCoder
+	if errors.As(err, &ec) {
+		return ec.ExitCode()
 	}
 	return 1
 }
