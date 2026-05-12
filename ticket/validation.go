@@ -1,5 +1,10 @@
 package ticket
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Validate checks a ticket for required fields and valid values.
 // It returns a slice of ValidationErrors describing every detected problem.
 // An empty slice means the ticket is valid.
@@ -18,7 +23,7 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 
 	if t.Type == "" {
 		errs = append(errs, ValidationError{Field: "type", Message: "required"})
-	} else if !validTicketTypes[t.Type] {
+	} else if !ValidTypes[t.Type] {
 		errs = append(errs, ValidationError{Field: "type", Message: "unknown type: " + t.Type})
 	}
 
@@ -29,7 +34,42 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 		})
 	}
 
+	if t.Priority < 0 {
+		errs = append(errs, ValidationError{Field: "priority", Message: "must be >= 0"})
+	}
+
+	seen := make(map[string]bool, len(t.Tags))
+	for i, tag := range t.Tags {
+		if strings.TrimSpace(tag) == "" {
+			errs = append(errs, ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)})
+		}
+		if seen[tag] {
+			errs = append(errs, ValidationError{Field: "tags", Message: "duplicate tag: " + tag})
+		}
+		seen[tag] = true
+	}
+
+	for i, ac := range t.AcceptanceCriteria {
+		if strings.TrimSpace(ac) == "" {
+			errs = append(errs, ValidationError{Field: "acceptance_criteria", Message: fmt.Sprintf("item %d is empty", i)})
+		}
+	}
+
 	return errs
+}
+
+// ValidateNew validates user-supplied fields on a not-yet-stored ticket.
+// It skips the ID check because IDs are store-assigned.
+// Returns the first validation error encountered (fail-fast).
+func ValidateNew(t *Ticket) error {
+	for _, e := range Validate(*t) {
+		if e.Field == "id" {
+			continue
+		}
+		e := e
+		return &e
+	}
+	return nil
 }
 
 // ValidateID checks that a ticket ID conforms to the required format:

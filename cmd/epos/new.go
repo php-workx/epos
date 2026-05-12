@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/store"
@@ -46,39 +45,6 @@ const (
 	defaultTicketType = "task"
 	newIDMaxAttempts  = 8
 )
-
-var validTicketTypeSet = map[string]bool{
-	"epic": true, defaultTicketType: true, "issue": true, "feature": true,
-	"bug": true, "chore": true, "spike": true, "doc": true,
-}
-
-func validateNewSpec(spec *newTicketSpec) error {
-	if strings.TrimSpace(spec.Title) == "" {
-		return &ticket.ValidationError{Field: "title", Message: "required"}
-	}
-	if spec.Type != "" && !validTicketTypeSet[spec.Type] {
-		return &ticket.ValidationError{Field: "type", Message: "must be one of: epic, task, issue, feature, bug, chore, spike, doc"}
-	}
-	if spec.Priority < 0 {
-		return &ticket.ValidationError{Field: "priority", Message: "must be >= 0"}
-	}
-	seen := make(map[string]bool, len(spec.Tags))
-	for i, tag := range spec.Tags {
-		if strings.TrimSpace(tag) == "" {
-			return &ticket.ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)}
-		}
-		if seen[tag] {
-			return &ticket.ValidationError{Field: "tags", Message: fmt.Sprintf("duplicate tag %q", tag)}
-		}
-		seen[tag] = true
-	}
-	for i, ac := range spec.AcceptanceCriteria {
-		if strings.TrimSpace(ac) == "" {
-			return &ticket.ValidationError{Field: "acceptance_criteria", Message: fmt.Sprintf("item %d is empty", i)}
-		}
-	}
-	return nil
-}
 
 func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 	opts := []ticket.TicketOption{
@@ -196,7 +162,7 @@ var newCmd = &cobra.Command{
 			spec.Intent = newIntent
 		}
 
-		if err := validateNewSpec(spec); err != nil {
+		if err := ticket.ValidateNew(specToTicket(spec)); err != nil {
 			return err
 		}
 

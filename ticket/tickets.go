@@ -41,8 +41,8 @@ const (
 	StatusFailed Status = "failed"
 )
 
-// validTicketTypes is the set of allowed values for Ticket.Type.
-var validTicketTypes = map[string]bool{
+// ValidTypes is the set of allowed values for Ticket.Type.
+var ValidTypes = map[string]bool{
 	"epic":    true,
 	"task":    true,
 	"issue":   true,
