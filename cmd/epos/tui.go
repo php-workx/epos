@@ -7,6 +7,7 @@ import (
 
 	"github.com/php-workx/epos/internal/tui"
 	"github.com/php-workx/epos/ticket"
+	"github.com/php-workx/epos/ticket/store"
 	"github.com/spf13/cobra"
 
 	tea "charm.land/bubbletea/v2"
@@ -26,7 +27,7 @@ var tuiCmd = &cobra.Command{
 		if jsonFlag {
 			return &ticket.ValidationError{Field: "json", Message: "tui is interactive and does not support --json"}
 		}
-		s, err := storeFromFlag()
+		s, err := store.NewFileStore(dirFlag)
 		if err != nil {
 			return err
 		}
