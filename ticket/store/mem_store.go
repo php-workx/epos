@@ -34,11 +34,34 @@ func cloneStrings(s []string) []string {
 	return c
 }
 
+// deepCopyAny returns a deep copy of v for the yaml.v3 type universe:
+// map[string]any, []any, and scalar types (string, int, bool, float64, etc.).
+func deepCopyAny(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		cp := make(map[string]any, len(val))
+		for k, v2 := range val {
+			cp[k] = deepCopyAny(v2)
+		}
+		return cp
+	case []any:
+		cp := make([]any, len(val))
+		for i, v2 := range val {
+			cp[i] = deepCopyAny(v2)
+		}
+		return cp
+	default:
+		return val
+	}
+}
+
 // cloneTicket returns a deep copy of t. All map and slice fields are given
 // independent backing storage so that mutations to the returned value cannot
 // corrupt the stored copy.
 func cloneTicket(t *ticket.Ticket) *ticket.Ticket {
 	cp := *t
+	// Invariant: Create and Update both initialise Present before storing,
+	// so the nil branch is defensive only.
 	if t.Present != nil {
 		cp.Present = make(map[string]bool, len(t.Present))
 		for k, v := range t.Present {
@@ -46,11 +69,9 @@ func cloneTicket(t *ticket.Ticket) *ticket.Ticket {
 		}
 	}
 	if t.Extra != nil {
-		// Shallow copy only: Extra values are YAML-parsed scalars used for
-		// round-trip fidelity and are never mutated by callers.
 		cp.Extra = make(map[string]any, len(t.Extra))
 		for k, v := range t.Extra {
-			cp.Extra[k] = v
+			cp.Extra[k] = deepCopyAny(v)
 		}
 	}
 	cp.Deps = cloneStrings(t.Deps)

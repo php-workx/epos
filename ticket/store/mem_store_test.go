@@ -670,3 +670,40 @@ func TestMemStoreReadIsolatesValidationChecks(t *testing.T) {
 		t.Error("ValidationChecks shares backing array with internal store — isolation violated")
 	}
 }
+
+func TestMemStoreReadIsolatesExtraNestedValues(t *testing.T) {
+	m := store.NewMemStore()
+	tk := testutil.NewTestTicket("extra-nested")
+	tk.Extra = map[string]any{
+		"nested_list": []any{"a", "b", "c"},
+		"nested_map":  map[string]any{"x": "original"},
+		"scalar":      "flat",
+	}
+	if err := m.Create(tk); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+
+	// Mutate nested slice value on the returned copy.
+	got.Extra["nested_list"].([]any)[0] = "mutated"
+	// Mutate nested map value on the returned copy.
+	got.Extra["nested_map"].(map[string]any)["x"] = "mutated"
+
+	got2, err := m.Read(tk.ID)
+	if err != nil {
+		t.Fatalf("second Read: %v", err)
+	}
+	if list, ok := got2.Extra["nested_list"].([]any); ok && list[0] == "mutated" {
+		t.Error("Extra nested_list shares backing with internal store — isolation violated")
+	}
+	if m2, ok := got2.Extra["nested_map"].(map[string]any); ok && m2["x"] == "mutated" {
+		t.Error("Extra nested_map shares backing with internal store — isolation violated")
+	}
+	if got2.Extra["scalar"] != "flat" {
+		t.Errorf("Extra scalar: got %v, want %q", got2.Extra["scalar"], "flat")
+	}
+}
