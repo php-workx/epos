@@ -46,6 +46,8 @@ func cloneTicket(t *ticket.Ticket) *ticket.Ticket {
 		}
 	}
 	if t.Extra != nil {
+		// Shallow copy only: Extra values are YAML-parsed scalars used for
+		// round-trip fidelity and are never mutated by callers.
 		cp.Extra = make(map[string]any, len(t.Extra))
 		for k, v := range t.Extra {
 			cp.Extra[k] = v
