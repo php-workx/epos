@@ -364,11 +364,9 @@ func (m *MemStore) RemoveDep(id, depID string) error {
 	return nil
 }
 
-// addLink appends targetID to the Links slice of the ticket identified by id.
-// It is a no-op if targetID is already present. The caller must NOT hold mu.
-func (m *MemStore) addLink(id, targetID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// applyLinkLocked appends targetID to the Links slice of the ticket identified
+// by id. No-op if targetID is already present. mu must be held by the caller.
+func (m *MemStore) applyLinkLocked(id, targetID string) error {
 	t, ok := m.tickets[id]
 	if !ok {
 		return &ticket.TicketNotFoundError{ID: id}
@@ -383,11 +381,9 @@ func (m *MemStore) addLink(id, targetID string) error {
 	return nil
 }
 
-// removeLink removes targetID from the Links slice of the ticket identified by id.
-// The caller must NOT hold mu.
-func (m *MemStore) removeLink(id, targetID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+// applyUnlinkLocked removes targetID from the Links slice of the ticket
+// identified by id. mu must be held by the caller.
+func (m *MemStore) applyUnlinkLocked(id, targetID string) error {
 	t, ok := m.tickets[id]
 	if !ok {
 		return &ticket.TicketNotFoundError{ID: id}
@@ -402,7 +398,9 @@ func (m *MemStore) removeLink(id, targetID string) error {
 	return nil
 }
 
-// Link creates a symmetric link between id and targetID.
+// Link creates a symmetric link between id and targetID. Both sides are written
+// under a single lock so the operation is atomic — no partial-link state is
+// possible under concurrent deletes.
 func (m *MemStore) Link(id, targetID string) error {
 	fullA, err := m.ResolveID(id)
 	if err != nil {
@@ -415,13 +413,16 @@ func (m *MemStore) Link(id, targetID string) error {
 	if fullA == fullB {
 		return &ticket.ValidationError{Field: "links", Message: "cannot link a ticket to itself"}
 	}
-	if err := m.addLink(fullA, fullB); err != nil {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.applyLinkLocked(fullA, fullB); err != nil {
 		return err
 	}
-	return m.addLink(fullB, fullA)
+	return m.applyLinkLocked(fullB, fullA)
 }
 
-// Unlink removes the symmetric link between id and targetID.
+// Unlink removes the symmetric link between id and targetID. Both sides are
+// written under a single lock.
 func (m *MemStore) Unlink(id, targetID string) error {
 	fullA, err := m.ResolveID(id)
 	if err != nil {
@@ -431,10 +432,12 @@ func (m *MemStore) Unlink(id, targetID string) error {
 	if err != nil {
 		return err
 	}
-	if err := m.removeLink(fullA, fullB); err != nil {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.applyUnlinkLocked(fullA, fullB); err != nil {
 		return err
 	}
-	return m.removeLink(fullB, fullA)
+	return m.applyUnlinkLocked(fullB, fullA)
 }
 
 // ListAllChildren returns all tickets whose Parent field equals parentID.
