@@ -26,10 +26,10 @@ A partial-update descriptor. Only fields explicitly set via setters (or decoded 
 ## Validation
 
 **ValidateNew**
-Validates user-supplied fields on a not-yet-stored Ticket (title, type, priority, tags). Does not check ID — IDs are store-assigned and do not exist at validation time. Returns a single error (fail-fast).
+Validates all user-supplied fields on a not-yet-stored Ticket. Does not check ID — IDs are store-assigned and do not exist at validation time. Returns the first validation error encountered (fail-fast). Returns an internal error (exit code 1) if called with a nil pointer.
 
-**ValidTypes**
-The exported set of allowed ticket type strings (epic, task, issue, feature, bug, chore, spike, doc). Single source of truth; CLI and library both reference this set.
+**IsValidType**
+Exported function that reports whether a string is a known ticket type (epic, task, issue, feature, bug, chore, spike, doc). Single source of truth; replaces the previously exported `ValidTypes` map to prevent external mutation.
 
 ## Exit Codes
 

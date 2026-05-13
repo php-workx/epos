@@ -64,13 +64,12 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 // Returns the first validation error encountered (fail-fast).
 func ValidateNew(t *Ticket) error {
 	if t == nil {
-		return &ValidationError{Field: "ticket", Message: "nil ticket"}
+		return fmt.Errorf("ValidateNew: nil ticket")
 	}
 	for _, e := range Validate(*t) {
 		if e.Field == "id" {
 			continue
 		}
-		e := e
 		return &e
 	}
 	return nil

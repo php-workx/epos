@@ -1,6 +1,7 @@
 package ticket_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/php-workx/epos/ticket"
@@ -104,6 +105,44 @@ func TestValidateID(t *testing.T) {
 		if !tt.valid && err == nil {
 			t.Errorf("ValidateID(%q): expected error, got nil", tt.id)
 		}
+	}
+}
+
+func TestValidateNewNilTicket(t *testing.T) {
+	err := ticket.ValidateNew(nil)
+	if err == nil {
+		t.Fatal("ValidateNew(nil): expected error, got nil")
+	}
+	var ve *ticket.ValidationError
+	if errors.As(err, &ve) {
+		t.Errorf("ValidateNew(nil): got *ValidationError (exit 2), want plain error (exit 1): %v", err)
+	}
+}
+
+func TestValidateTagWhitespaceDuplicate(t *testing.T) {
+	cases := []struct {
+		name string
+		tags []string
+	}{
+		{"space prefix", []string{"foo", " foo"}},
+		{"tab prefix", []string{"foo", "\tfoo"}},
+		{"both padded", []string{" foo", "\tfoo"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tk := ticket.Ticket{ID: "abc-1", Title: "T", Type: "task", Tags: tc.tags}
+			errs := ticket.Validate(tk)
+			found := false
+			for _, e := range errs {
+				if e.Field == "tags" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Validate: expected duplicate-tag error for %v, got none", tc.tags)
+			}
+		})
 	}
 }
 

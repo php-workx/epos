@@ -8,6 +8,10 @@ import (
 // ReadyTickets returns all tickets that are ready to be worked: no open
 // blocking dependencies and no active claim. Callers that want to include
 // claimed tickets should use s.List and graph.ReadyFilterUnclaimed directly.
+//
+// NOTE: List and ActiveClaimSet are called as separate snapshots with no
+// spanning lock. A ticket returned here may be claimed by another agent before
+// the caller acts on it. Always call Claim() and handle AlreadyClaimedError.
 func ReadyTickets(s Store) ([]ticket.Ticket, error) {
 	tickets, err := s.List()
 	if err != nil {
@@ -22,6 +26,7 @@ func ReadyTickets(s Store) ([]ticket.Ticket, error) {
 }
 
 // ReadyChildren returns the ready, unclaimed children of parentID.
+// See ReadyTickets for the non-atomic snapshot caveat.
 func ReadyChildren(s Store, parentID string) ([]ticket.Ticket, error) {
 	tickets, err := s.List()
 	if err != nil {

@@ -24,7 +24,9 @@ func exitCode(err error) int {
 	}
 	var ec exitCoder
 	if errors.As(err, &ec) {
-		return ec.ExitCode()
+		if code := ec.ExitCode(); code >= 1 && code <= 6 {
+			return code
+		}
 	}
 	return 1
 }
