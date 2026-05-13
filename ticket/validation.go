@@ -23,7 +23,7 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 
 	if t.Type == "" {
 		errs = append(errs, ValidationError{Field: "type", Message: "required"})
-	} else if !ValidTypes[t.Type] {
+	} else if !IsValidType(t.Type) {
 		errs = append(errs, ValidationError{Field: "type", Message: "unknown type: " + t.Type})
 	}
 
@@ -40,13 +40,14 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 
 	seen := make(map[string]bool, len(t.Tags))
 	for i, tag := range t.Tags {
-		if strings.TrimSpace(tag) == "" {
+		normalized := strings.TrimSpace(tag)
+		if normalized == "" {
 			errs = append(errs, ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)})
 		}
-		if seen[tag] {
-			errs = append(errs, ValidationError{Field: "tags", Message: "duplicate tag: " + tag})
+		if seen[normalized] {
+			errs = append(errs, ValidationError{Field: "tags", Message: "duplicate tag: " + normalized})
 		}
-		seen[tag] = true
+		seen[normalized] = true
 	}
 
 	for i, ac := range t.AcceptanceCriteria {
@@ -62,6 +63,9 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 // It skips the ID check because IDs are store-assigned.
 // Returns the first validation error encountered (fail-fast).
 func ValidateNew(t *Ticket) error {
+	if t == nil {
+		return &ValidationError{Field: "ticket", Message: "nil ticket"}
+	}
 	for _, e := range Validate(*t) {
 		if e.Field == "id" {
 			continue

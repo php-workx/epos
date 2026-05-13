@@ -41,8 +41,7 @@ const (
 	StatusFailed Status = "failed"
 )
 
-// ValidTypes is the set of allowed values for Ticket.Type.
-var ValidTypes = map[string]bool{
+var validTypes = map[string]bool{
 	"epic":    true,
 	"task":    true,
 	"issue":   true,
@@ -52,6 +51,9 @@ var ValidTypes = map[string]bool{
 	"spike":   true,
 	"doc":     true,
 }
+
+// IsValidType reports whether s is a known ticket type.
+func IsValidType(s string) bool { return validTypes[s] }
 
 // TaskScope defines the filesystem paths in scope for a ticket's implementation.
 type TaskScope struct {
