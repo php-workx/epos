@@ -86,11 +86,6 @@ func createTicketWithGeneratedID(s store.Store, spec *newTicketSpec, generateID 
 		tk.ID = generateID(spec.Title)
 		tk.Present["id"] = true
 
-		if errs := ticket.Validate(*tk); len(errs) > 0 {
-			e := errs[0]
-			return nil, &e
-		}
-
 		if err := s.Create(tk); err != nil {
 			var collision *ticket.IDCollisionError
 			if errors.As(err, &collision) {
@@ -104,7 +99,7 @@ func createTicketWithGeneratedID(s store.Store, spec *newTicketSpec, generateID 
 	if lastCollision != nil {
 		return nil, fmt.Errorf("generate unique ticket ID after %d attempts: %w", attempts, lastCollision)
 	}
-	return nil, &ticket.ValidationError{Field: "id", Message: "could not generate ticket ID"}
+	return nil, fmt.Errorf("could not generate ticket ID after %d attempts", attempts)
 }
 
 var newCmd = &cobra.Command{
