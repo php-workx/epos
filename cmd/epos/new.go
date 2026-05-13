@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/store"
@@ -70,7 +71,11 @@ func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 		opts = append(opts, ticket.WithAssignee(spec.Assignee))
 	}
 	if len(spec.Tags) > 0 {
-		opts = append(opts, ticket.WithTags(spec.Tags...))
+		tags := make([]string, len(spec.Tags))
+		for i, tag := range spec.Tags {
+			tags[i] = strings.TrimSpace(tag)
+		}
+		opts = append(opts, ticket.WithTags(tags...))
 	}
 	if spec.Intent != "" {
 		opts = append(opts, ticket.WithIntent(spec.Intent))

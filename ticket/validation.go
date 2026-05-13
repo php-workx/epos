@@ -8,6 +8,11 @@ import (
 // Validate checks a ticket for required fields and valid values.
 // It returns a slice of ValidationErrors describing every detected problem.
 // An empty slice means the ticket is valid.
+//
+// NOTE: Validate reports problems but does not mutate t. Tag whitespace is
+// normalised for duplicate detection only — it is not stripped from the
+// stored value. Callers that accept user input should normalise before
+// persisting (e.g. strings.TrimSpace on each tag).
 func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Ticket is the canonical read-only API unit; pointer semantics would require nil guards and change the call-site contract
 	var errs []ValidationError
 
