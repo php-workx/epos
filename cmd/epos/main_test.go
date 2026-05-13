@@ -501,6 +501,50 @@ func TestExitCodeGeneric(t *testing.T) {
 	}
 }
 
+func TestExitCodeCycleDetected(t *testing.T) {
+	err := &ticket.CycleDetectedError{Cycle: []string{"a", "b", "a"}}
+	if got := exitCode(err); got != 5 {
+		t.Errorf("exitCode(CycleDetectedError) = %d, want 5", got)
+	}
+}
+
+func TestExitCodeAlreadyClaimed(t *testing.T) {
+	err := &ticket.AlreadyClaimedError{TicketID: "t-1", ClaimedBy: "agent-x"}
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(AlreadyClaimedError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeNotClaimed(t *testing.T) {
+	err := &ticket.NotClaimedError{TicketID: "t-1"}
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(NotClaimedError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeNotClaimOwner(t *testing.T) {
+	err := &ticket.NotClaimOwnerError{TicketID: "t-1", ClaimedBy: "agent-x", Caller: "agent-y"}
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(NotClaimOwnerError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeWrapped(t *testing.T) {
+	inner := &ticket.TicketNotFoundError{ID: "xyz"}
+	err := fmt.Errorf("wrapped: %w", inner)
+	if got := exitCode(err); got != 3 {
+		t.Errorf("exitCode(wrapped TicketNotFoundError) = %d, want 3", got)
+	}
+}
+
+func TestExitCodeWrappedClaim(t *testing.T) {
+	inner := &ticket.AlreadyClaimedError{TicketID: "t-1", ClaimedBy: "agent-x"}
+	err := fmt.Errorf("wrapped: %w", inner)
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(wrapped AlreadyClaimedError) = %d, want 6", got)
+	}
+}
+
 // --- Verify testutil helpers are usable from cmd/epos tests ---
 
 // TestTestutilNewTestStore verifies that the testutil helpers work correctly.

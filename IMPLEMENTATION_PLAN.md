@@ -337,7 +337,7 @@ Wrap CLI with an agent skill. Make ticket context available to vakt read-only.
 | E4-T6 | `epos claim` / `epos release` | Claim/release tickets via sidecar | Sidecar files created/removed, frontmatter untouched |
 | E4-T7 | `epos close` / `epos reopen` | Status transitions | Status changes with optional reason |
 | E4-T8 | `epos export` | Export tickets as JSON for agent consumption | Deterministic JSON output |
-| E4-T9 | Deterministic exit codes | 0 = success, 1 = general error, 2 = validation error, 3 = not found, 4 = ambiguous ID | Exit codes match spec |
+| E4-T9 | Deterministic exit codes | 0 = success, 1 = general error, 2 = validation error, 3 = not found, 4 = ambiguous ID, 5 = cycle detected, 6 = claim conflict | Exit codes match spec |
 | E4-T10 | Integration tests | Full CLI workflows tested end-to-end | All commands work together |
 
 ### Epic E5: `fabrikk` integration

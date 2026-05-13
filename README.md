@@ -259,6 +259,8 @@ epos lint
 | 2 | `ValidationError` |
 | 3 | `TicketNotFoundError` |
 | 4 | `AmbiguousIDError` |
+| 5 | `CycleDetectedError` |
+| 6 | `AlreadyClaimedError`, `NotClaimedError`, `NotClaimOwnerError` |
 
 ## Requirements
 
