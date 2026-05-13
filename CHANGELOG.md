@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0 - 2026-05-13
+
+### Features
+- Add a `TicketPatch` type for partial ticket updates: decode a JSON object and apply only the fields that were present, leaving everything else untouched.
+- Add predictable exit codes for every error condition: 2 for validation failures, 3 for ticket not found, 4 for ambiguous ID prefix, 5 for dependency cycles, 6 for claim conflicts. All other errors exit 1.
+- Add library-level helpers for querying ready (unblocked, unclaimed) tickets — useful for callers building agent or automation integrations.
+
+### Fixes
+- Fix error output: errors now go exclusively to stderr; usage text is no longer printed on runtime failures. Stdout stays clean for piping.
+- Fix tag deduplication: whitespace variants like `"foo"` and `" foo"` are now correctly detected as duplicates; tags are stored with whitespace stripped.
+- Fix title validation: titles containing only whitespace are now rejected.
+- Fix ticket store: returned ticket slices are now deep-copied so callers cannot accidentally mutate stored data.
+
 ## 0.2.5 - 2026-05-08
 
 ### Fixes
