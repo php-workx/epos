@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -83,6 +85,23 @@ func epos(t *testing.T, dir string, args ...string) (output, stderr string, exit
 		stderr = err.Error()
 	}
 	return output, stderr, exitCode
+}
+
+// eposSeparate runs epos with separate stdout and stderr buffers.
+// Use this when testing that error messages go to stderr, not stdout.
+func eposSeparate(t *testing.T, dir string, args ...string) (stdout, stderr string, exitCode int) {
+	t.Helper()
+	var outBuf, errBuf bytes.Buffer
+	cmd := exec.Command(binaryPath, append([]string{"--dir", dir}, args...)...)
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	stdout = outBuf.String()
+	stderr = errBuf.String()
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exitCode = exitErr.ExitCode()
+	}
+	return stdout, stderr, exitCode
 }
 
 // --- Integration tests ---
@@ -498,6 +517,82 @@ func TestExitCodeGeneric(t *testing.T) {
 	err := fmt.Errorf("some generic error")
 	if got := exitCode(err); got != 1 {
 		t.Errorf("exitCode(generic) = %d, want 1", got)
+	}
+}
+
+func TestExitCodeCycleDetected(t *testing.T) {
+	err := &ticket.CycleDetectedError{Cycle: []string{"a", "b", "a"}}
+	if got := exitCode(err); got != 5 {
+		t.Errorf("exitCode(CycleDetectedError) = %d, want 5", got)
+	}
+}
+
+func TestExitCodeAlreadyClaimed(t *testing.T) {
+	err := &ticket.AlreadyClaimedError{TicketID: "t-1", ClaimedBy: "agent-x"}
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(AlreadyClaimedError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeNotClaimed(t *testing.T) {
+	err := &ticket.NotClaimedError{TicketID: "t-1"}
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(NotClaimedError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeNotClaimOwner(t *testing.T) {
+	err := &ticket.NotClaimOwnerError{TicketID: "t-1", ClaimedBy: "agent-x", Caller: "agent-y"}
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(NotClaimOwnerError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeWrapped(t *testing.T) {
+	inner := &ticket.TicketNotFoundError{ID: "xyz"}
+	err := fmt.Errorf("wrapped: %w", inner)
+	if got := exitCode(err); got != 3 {
+		t.Errorf("exitCode(wrapped TicketNotFoundError) = %d, want 3", got)
+	}
+}
+
+func TestExitCodeWrappedClaim(t *testing.T) {
+	inner := &ticket.AlreadyClaimedError{TicketID: "t-1", ClaimedBy: "agent-x"}
+	err := fmt.Errorf("wrapped: %w", inner)
+	if got := exitCode(err); got != 6 {
+		t.Errorf("exitCode(wrapped AlreadyClaimedError) = %d, want 6", got)
+	}
+}
+
+func TestExitCodeWrappedAll(t *testing.T) {
+	cases := []struct {
+		err  error
+		want int
+	}{
+		{fmt.Errorf("w: %w", &ticket.ValidationError{Field: "f"}), 2},
+		{fmt.Errorf("w: %w", &ticket.AmbiguousIDError{Partial: "x"}), 4},
+		{fmt.Errorf("w: %w", &ticket.CycleDetectedError{Cycle: []string{"a"}}), 5},
+		{fmt.Errorf("w: %w", &ticket.NotClaimedError{TicketID: "t"}), 6},
+		{fmt.Errorf("w: %w", &ticket.NotClaimOwnerError{TicketID: "t", ClaimedBy: "x", Caller: "y"}), 6},
+	}
+	for _, tc := range cases {
+		if got := exitCode(tc.err); got != tc.want {
+			t.Errorf("exitCode(%T wrapped) = %d, want %d", errors.Unwrap(tc.err), got, tc.want)
+		}
+	}
+}
+
+func TestErrorGoesToStderrNotStdout(t *testing.T) {
+	dir := t.TempDir()
+	stdout, stderr, code := eposSeparate(t, dir, "show", "nonexistent-id")
+	if code != 3 {
+		t.Fatalf("expected exit 3 (TicketNotFoundError), got %d; stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Errorf("expected empty stdout on error, got: %q", stdout)
+	}
+	if stderr == "" {
+		t.Errorf("expected error message on stderr, got empty")
 	}
 }
 

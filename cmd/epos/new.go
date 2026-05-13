@@ -47,39 +47,6 @@ const (
 	newIDMaxAttempts  = 8
 )
 
-var validTicketTypeSet = map[string]bool{
-	"epic": true, defaultTicketType: true, "issue": true, "feature": true,
-	"bug": true, "chore": true, "spike": true, "doc": true,
-}
-
-func validateNewSpec(spec *newTicketSpec) error {
-	if strings.TrimSpace(spec.Title) == "" {
-		return &ticket.ValidationError{Field: "title", Message: "required"}
-	}
-	if spec.Type != "" && !validTicketTypeSet[spec.Type] {
-		return &ticket.ValidationError{Field: "type", Message: "must be one of: epic, task, issue, feature, bug, chore, spike, doc"}
-	}
-	if spec.Priority < 0 {
-		return &ticket.ValidationError{Field: "priority", Message: "must be >= 0"}
-	}
-	seen := make(map[string]bool, len(spec.Tags))
-	for i, tag := range spec.Tags {
-		if strings.TrimSpace(tag) == "" {
-			return &ticket.ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)}
-		}
-		if seen[tag] {
-			return &ticket.ValidationError{Field: "tags", Message: fmt.Sprintf("duplicate tag %q", tag)}
-		}
-		seen[tag] = true
-	}
-	for i, ac := range spec.AcceptanceCriteria {
-		if strings.TrimSpace(ac) == "" {
-			return &ticket.ValidationError{Field: "acceptance_criteria", Message: fmt.Sprintf("item %d is empty", i)}
-		}
-	}
-	return nil
-}
-
 func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 	opts := []ticket.TicketOption{
 		ticket.WithTitle(spec.Title),
@@ -104,7 +71,11 @@ func specToTicket(spec *newTicketSpec) *ticket.Ticket {
 		opts = append(opts, ticket.WithAssignee(spec.Assignee))
 	}
 	if len(spec.Tags) > 0 {
-		opts = append(opts, ticket.WithTags(spec.Tags...))
+		tags := make([]string, len(spec.Tags))
+		for i, tag := range spec.Tags {
+			tags[i] = strings.TrimSpace(tag)
+		}
+		opts = append(opts, ticket.WithTags(tags...))
 	}
 	if spec.Intent != "" {
 		opts = append(opts, ticket.WithIntent(spec.Intent))
@@ -120,11 +91,6 @@ func createTicketWithGeneratedID(s store.Store, spec *newTicketSpec, generateID 
 		tk.ID = generateID(spec.Title)
 		tk.Present["id"] = true
 
-		if errs := ticket.Validate(*tk); len(errs) > 0 {
-			e := errs[0]
-			return nil, &e
-		}
-
 		if err := s.Create(tk); err != nil {
 			var collision *ticket.IDCollisionError
 			if errors.As(err, &collision) {
@@ -138,7 +104,7 @@ func createTicketWithGeneratedID(s store.Store, spec *newTicketSpec, generateID 
 	if lastCollision != nil {
 		return nil, fmt.Errorf("generate unique ticket ID after %d attempts: %w", attempts, lastCollision)
 	}
-	return nil, &ticket.ValidationError{Field: "id", Message: "could not generate ticket ID"}
+	return nil, fmt.Errorf("could not generate ticket ID after %d attempts", attempts)
 }
 
 var newCmd = &cobra.Command{
@@ -196,7 +162,7 @@ var newCmd = &cobra.Command{
 			spec.Intent = newIntent
 		}
 
-		if err := validateNewSpec(spec); err != nil {
+		if err := ticket.ValidateNew(specToTicket(spec)); err != nil {
 			return err
 		}
 

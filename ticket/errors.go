@@ -12,6 +12,8 @@ func (e *TicketNotFoundError) Error() string {
 	return fmt.Sprintf("ticket not found: %q", e.ID)
 }
 
+func (e *TicketNotFoundError) ExitCode() int { return 3 }
+
 // AmbiguousIDError is returned when a partial ID matches more than one ticket.
 type AmbiguousIDError struct {
 	// Partial is the partial ID that was supplied.
@@ -23,6 +25,8 @@ type AmbiguousIDError struct {
 func (e *AmbiguousIDError) Error() string {
 	return fmt.Sprintf("ambiguous ticket ID %q: matches %v", e.Partial, e.Matches)
 }
+
+func (e *AmbiguousIDError) ExitCode() int { return 4 }
 
 // IDCollisionError is returned when a generated ticket ID already exists in the store.
 type IDCollisionError struct {
@@ -61,6 +65,8 @@ func (e *CycleDetectedError) Error() string {
 	return fmt.Sprintf("dependency cycle detected: %v", e.Cycle)
 }
 
+func (e *CycleDetectedError) ExitCode() int { return 5 }
+
 // AlreadyClaimedError is returned when a ticket is already claimed by a different agent.
 type AlreadyClaimedError struct {
 	// TicketID is the claimed ticket's ID.
@@ -73,6 +79,8 @@ func (e *AlreadyClaimedError) Error() string {
 	return fmt.Sprintf("ticket %q is already claimed by %q", e.TicketID, e.ClaimedBy)
 }
 
+func (e *AlreadyClaimedError) ExitCode() int { return 6 }
+
 // NotClaimedError is returned when an operation requires an active claim that does not exist.
 type NotClaimedError struct {
 	// TicketID is the ticket that lacks a claim.
@@ -82,6 +90,8 @@ type NotClaimedError struct {
 func (e *NotClaimedError) Error() string {
 	return fmt.Sprintf("ticket %q is not claimed", e.TicketID)
 }
+
+func (e *NotClaimedError) ExitCode() int { return 6 }
 
 // NotClaimOwnerError is returned when the caller does not own the claim it is trying to use.
 type NotClaimOwnerError struct {
@@ -97,8 +107,9 @@ func (e *NotClaimOwnerError) Error() string {
 	return fmt.Sprintf("ticket %q is claimed by %q, not %q", e.TicketID, e.ClaimedBy, e.Caller)
 }
 
+func (e *NotClaimOwnerError) ExitCode() int { return 6 }
+
 // ValidationError is returned when a ticket field fails validation.
-// The CLI uses type assertions on ValidationError to produce exit code 2.
 type ValidationError struct {
 	// Field is the name of the ticket field that failed validation.
 	Field string
@@ -109,6 +120,8 @@ type ValidationError struct {
 func (e *ValidationError) Error() string {
 	return fmt.Sprintf("validation error: field %q: %s", e.Field, e.Message)
 }
+
+func (e *ValidationError) ExitCode() int { return 2 }
 
 // PartialReadError is returned when a store read operation partially succeeds,
 // meaning some tickets were loaded and some were not.

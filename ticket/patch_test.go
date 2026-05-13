@@ -143,6 +143,18 @@ func TestValidateTagDuplicate(t *testing.T) {
 	}
 }
 
+func TestPatchValidateTagWhitespaceDuplicate(t *testing.T) {
+	p := &ticket.TicketPatch{}
+	p.SetTags([]string{"foo", " foo"})
+	err := p.Validate()
+	if err == nil {
+		t.Fatal("expected ValidationError for whitespace-variant duplicate tag, got nil")
+	}
+	if ve, ok := err.(*ticket.ValidationError); !ok || ve.Field != "tags" {
+		t.Errorf("expected ValidationError{Field:\"tags\"}, got %v", err)
+	}
+}
+
 func TestValidateACItemEmpty(t *testing.T) {
 	p := &ticket.TicketPatch{}
 	p.SetAcceptanceCriteria([]string{""})

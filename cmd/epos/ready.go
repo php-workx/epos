@@ -5,6 +5,7 @@ import (
 
 	"github.com/php-workx/epos/ticket"
 	"github.com/php-workx/epos/ticket/graph"
+	"github.com/php-workx/epos/ticket/store"
 	"github.com/spf13/cobra"
 )
 
@@ -23,26 +24,24 @@ var readyCmd = &cobra.Command{
 			return err
 		}
 
-		var isClaimed func(string) bool
-		if !readyIncludeClaimed {
-			claimed, cerr := s.ActiveClaimSet()
-			if cerr != nil {
-				return cerr
-			}
-			isClaimed = func(id string) bool { return claimed[id] }
-		}
-
 		if len(args) > 0 && args[0] != "" {
-			// Filter by parent.
 			parentID, _, err := resolveTicketID(s, args[0])
 			if err != nil {
 				return err
 			}
-			tickets, err := s.List()
-			if err != nil {
-				return err
+			var children []ticket.Ticket
+			if readyIncludeClaimed {
+				all, lerr := s.List()
+				if lerr != nil {
+					return lerr
+				}
+				children = graph.FilterReadyChildren(all, parentID, nil)
+			} else {
+				children, err = store.ReadyChildren(s, parentID)
+				if err != nil {
+					return err
+				}
 			}
-			children := graph.FilterReadyChildren(tickets, parentID, isClaimed)
 			if jsonFlag {
 				return outputJSON(cmd, children)
 			}
@@ -52,11 +51,19 @@ var readyCmd = &cobra.Command{
 			return nil
 		}
 
-		tickets, err := s.List()
-		if err != nil {
-			return err
+		var ready []ticket.Ticket
+		if readyIncludeClaimed {
+			all, lerr := s.List()
+			if lerr != nil {
+				return lerr
+			}
+			ready = graph.ReadyFilterUnclaimed(all, nil)
+		} else {
+			ready, err = store.ReadyTickets(s)
+			if err != nil {
+				return err
+			}
 		}
-		ready := graph.ReadyFilterUnclaimed(tickets, isClaimed)
 		if jsonFlag {
 			return outputJSON(cmd, ready)
 		}

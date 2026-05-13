@@ -212,3 +212,16 @@ func TestTicketStructZeroValues(t *testing.T) {
 		t.Errorf("zero-value Status: got %q, want empty string", tk.Status)
 	}
 }
+
+func TestIsValidType(t *testing.T) {
+	for _, v := range []string{"epic", "task", "issue", "feature", "bug", "chore", "spike", "doc"} {
+		if !ticket.IsValidType(v) {
+			t.Errorf("IsValidType(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"", "TASK", "Task", "unknown", "todo"} {
+		if ticket.IsValidType(v) {
+			t.Errorf("IsValidType(%q) = true, want false", v)
+		}
+	}
+}

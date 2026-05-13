@@ -1,8 +1,18 @@
 package ticket
 
+import (
+	"fmt"
+	"strings"
+)
+
 // Validate checks a ticket for required fields and valid values.
 // It returns a slice of ValidationErrors describing every detected problem.
 // An empty slice means the ticket is valid.
+//
+// NOTE: Validate reports problems but does not mutate t. Tag whitespace is
+// normalised for duplicate detection only — it is not stripped from the
+// stored value. Callers that accept user input should normalise before
+// persisting (e.g. strings.TrimSpace on each tag).
 func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Ticket is the canonical read-only API unit; pointer semantics would require nil guards and change the call-site contract
 	var errs []ValidationError
 
@@ -12,13 +22,13 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 		errs = append(errs, *idErr)
 	}
 
-	if t.Title == "" && !t.TitleDerived {
+	if strings.TrimSpace(t.Title) == "" && !t.TitleDerived {
 		errs = append(errs, ValidationError{Field: "title", Message: "required"})
 	}
 
 	if t.Type == "" {
 		errs = append(errs, ValidationError{Field: "type", Message: "required"})
-	} else if !validTicketTypes[t.Type] {
+	} else if !IsValidType(t.Type) {
 		errs = append(errs, ValidationError{Field: "type", Message: "unknown type: " + t.Type})
 	}
 
@@ -29,7 +39,45 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 		})
 	}
 
+	if t.Priority < 0 {
+		errs = append(errs, ValidationError{Field: "priority", Message: "must be >= 0"})
+	}
+
+	seen := make(map[string]bool, len(t.Tags))
+	for i, tag := range t.Tags {
+		normalized := strings.TrimSpace(tag)
+		if normalized == "" {
+			errs = append(errs, ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)})
+		}
+		if seen[normalized] {
+			errs = append(errs, ValidationError{Field: "tags", Message: "duplicate tag: " + normalized})
+		}
+		seen[normalized] = true
+	}
+
+	for i, ac := range t.AcceptanceCriteria {
+		if strings.TrimSpace(ac) == "" {
+			errs = append(errs, ValidationError{Field: "acceptance_criteria", Message: fmt.Sprintf("item %d is empty", i)})
+		}
+	}
+
 	return errs
+}
+
+// ValidateNew validates user-supplied fields on a not-yet-stored ticket.
+// It skips the ID check because IDs are store-assigned.
+// Returns the first validation error encountered (fail-fast).
+func ValidateNew(t *Ticket) error {
+	if t == nil {
+		return fmt.Errorf("ValidateNew: nil ticket")
+	}
+	for _, e := range Validate(*t) {
+		if e.Field == "id" {
+			continue
+		}
+		return &e
+	}
+	return nil
 }
 
 // ValidateID checks that a ticket ID conforms to the required format:

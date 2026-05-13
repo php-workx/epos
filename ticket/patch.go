@@ -59,13 +59,14 @@ func (p *TicketPatch) Validate() error {
 	if p.Has("tags") {
 		seen := make(map[string]bool, len(p.tags))
 		for i, tag := range p.tags {
-			if strings.TrimSpace(tag) == "" {
+			normalized := strings.TrimSpace(tag)
+			if normalized == "" {
 				return &ValidationError{Field: "tags", Message: fmt.Sprintf("item %d is empty", i)}
 			}
-			if seen[tag] {
-				return &ValidationError{Field: "tags", Message: fmt.Sprintf("duplicate tag %q", tag)}
+			if seen[normalized] {
+				return &ValidationError{Field: "tags", Message: fmt.Sprintf("duplicate tag %q", normalized)}
 			}
-			seen[tag] = true
+			seen[normalized] = true
 		}
 	}
 	if p.Has("acceptance_criteria") {
