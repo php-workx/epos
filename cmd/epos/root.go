@@ -31,6 +31,8 @@ var jsonFlag bool
 
 func init() {
 	rootCmd.Version = versionString()
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
 	rootCmd.PersistentFlags().StringVarP(&dirFlag, "dir", "d", ".", "directory containing the .tickets folder")
 	rootCmd.PersistentFlags().BoolVar(&jsonFlag, "json", false, "output in JSON format")
 }
