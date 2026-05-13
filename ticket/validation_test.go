@@ -119,6 +119,21 @@ func TestValidateNewNilTicket(t *testing.T) {
 	}
 }
 
+func TestValidateWhitespaceOnlyTitle(t *testing.T) {
+	tk := ticket.Ticket{ID: "abc-1", Title: "   ", Type: "task"}
+	errs := ticket.Validate(tk)
+	found := false
+	for _, e := range errs {
+		if e.Field == "title" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Validate: expected ValidationError{Field:\"title\"} for whitespace-only title, got: %v", errs)
+	}
+}
+
 func TestValidateTagWhitespaceDuplicate(t *testing.T) {
 	cases := []struct {
 		name string

@@ -22,7 +22,7 @@ func Validate(t Ticket) []ValidationError { //nolint:gocritic // hugeParam: Tick
 		errs = append(errs, *idErr)
 	}
 
-	if t.Title == "" && !t.TitleDerived {
+	if strings.TrimSpace(t.Title) == "" && !t.TitleDerived {
 		errs = append(errs, ValidationError{Field: "title", Message: "required"})
 	}
 
